@@ -1,0 +1,3050 @@
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ; $Id: main.asm,v 1.2 2005/07/31 21:31:31 tgipson Exp $
+                      00002 
+                      00003 
+                      00004 
+                      00005         list    p=18f4550
+                      00006         #include "p18f4550.inc"
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ;  $Id: P18F4550.INC,v 1.7.4.1 2005/02/15 17:35:35 curtiss Exp $
+                      00005 ;  MPASM PIC18F4550 processor include
+                      00006 ; 
+                      00007 ;  (c) Copyright 1999-2005 Microchip Technology, All rights reserved
+                      00008 ;==========================================================================
+                      00009 
+                      01617         LIST
+                      00007 
+                      00008 
+                      00009 
+                      00010 ; -----------------------
+                      00011 
+                      00012 
+                      00013 
+                      00014 ; -----------------------
+                      00015 
+                      00016 ;       org     0x0000
+                      00017 ;       goto    start
+                      00018 
+                      00019 ;       org     0x0018
+                      00020 ;       goto    start
+                      00021 
+000200                00022         org     0x200
+000200 EF3F F001      00023         goto    start
+                      00024 
+000218                00025         org     0x218
+000218 EF3F F001      00026         goto    start
+                      00027 
+                      00028 ;org    0x4000
+                      00029 
+                      00030 #include        "string_m.inc"
+                      00001 ; $Id: string_m.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $
+00021C                00002 str_string_ver:
+00021C 4924 3A64 7320 00003         DW      "$Id: string_m.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $\r\n\x00"
+       7274 6E69 5F67 
+       2E6D 6E69 2C63 
+       2076 2E31 2031 
+       3032 3530 302F 
+       2F37 3932 3120 
+       3A34 3835 353A 
+       2032 6774 7069 
+       6F73 206E 7845 
+       2070 0D24 000A 
+                      00004 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00005 ; This is a routine and macro for easily sending a text string to RS232.
+                      00006 ; Since it contains a macro, it must be #INCLUDEd BEFORE it is used, but after an ORG xxxx directive.
+                      00007 ; Could be easily modified to send the string elsewhere (e.g. LCD or other memory)
+                      00008 
+                      00009 ; Usage:
+                      00010 ; To send a string with label str_test, add the following to your source:
+                      00011 ;       sendstring      str_test
+                      00012 ;
+                      00013 ; Wherever appropriate in your code, add the string as follows:
+                      00014 ;       str_test:
+                      00015 ;               DW      "This is my string.\r\n\x00"
+                      00016 ;
+                      00017 ; The string can optionally contain the \r\n (return and linefeed), but MUST end with a null character (
+                            \x00).
+                      00018 
+                      00019 
+                      00020 sendstring      macro stringlabel
+                      00021         movlw   upper   stringlabel
+                      00022         movwf   TBLPTRU
+                      00023         movlw   high    stringlabel
+                      00024         movwf   TBLPTRH
+                      00025         movlw   low             stringlabel
+                      00026         movwf   TBLPTRL
+                      00027         call    stringsender
+                      00028         endm
+                      00029 
+                      00030 
+000258                00031 stringsender:
+000258 0009           00032         TBLRD*+
+00025A 50F5           00033         movf    TABLAT, W
+00025C 66E8           00034         TSTFSZ  WREG
+00025E EF32 F001      00035         goto    sendstrbyte
+000262 0012           00036         return
+                      00037 
+000264                00038 sendstrbyte: 
+000264 EC1C F003      00039         call    SENDCMNDP2
+000268 EF2C F001      00040         goto    stringsender
+                      00041 
+                      00042 
+                      00043 
+                      00044 ; ----------
+                      00045 
+                      00046 pstrcpy macro stringlabel, address
+                      00047         movlw   upper   stringlabel
+                      00048         movwf   TBLPTRU
+                      00049         movlw   high    stringlabel
+                      00050         movwf   TBLPTRH
+                      00051         movlw   low             stringlabel
+                      00052         movwf   TBLPTRL
+                      00053 
+                      00054         lfsr    FSR0, address
+                      00055 
+                      00056         call    rom_to_ram
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00057         endm
+                      00058 
+                      00059 
+00026C                00060 rom_to_ram:
+00026C 0009           00061         TBLRD*+
+00026E 50F5           00062         movf    TABLAT, W
+000270 66E8           00063         TSTFSZ  WREG
+000272 EF3C F001      00064         goto    rom_to_ram2
+000276 0012           00065         return
+                      00066 
+000278                00067 rom_to_ram2: 
+000278 6EEE           00068         movwf   POSTINC0
+00027A EF36 F001      00069         goto    rom_to_ram
+                      00070 
+                      00031 
+00027E                00032 start:
+00027E 90D1           00033         bcf             WDTCON, SWDTEN
+                      00034 
+000280 ECEB F001      00035         call    init_ports
+000284 EC08 F003      00036         call    INITUSART
+                      00037 
+000288 ECCD F002      00038         call    delaybit
+                      00039 
+00028C 0EF3           00040         movlw   B'11110011'             ; 8MHz
+                      00041 ;       movlw   B'11100000'             ; 4MHz
+00028E 6ED3           00042         movwf   OSCCON
+                      00043 
+000290                00044 testy:
+                      00045         sendstring      str_ready
+000290 0E00               M         movlw   upper   str_ready
+000292 6EF8               M         movwf   TBLPTRU
+000294 0E0C               M         movlw   high    str_ready
+000296 6EF7               M         movwf   TBLPTRH
+000298 0E32               M         movlw   low             str_ready
+00029A 6EF6               M         movwf   TBLPTRL
+00029C EC2C F001          M         call    stringsender
+0002A0 EC21 F003      00046         call    SENDCMNDP2CR
+                      00047 
+0002A4                00048 init:
+                      00049 
+0002A4 EC0D F004      00050         call    init_int_ADC
+                      00051 
+0002A8 EC22 F002      00052         call    delaysec
+                      00053 
+0002AC 8283           00054         bsf             SDIO, ACCEL_PWR
+                      00055 
+                      00056 
+0002AE 0E00           00057         movlw   H'00'
+0002B0 6E1D           00058         movwf   ADDR
+                      00059 
+0002B2 6A1C           00060         clrf    COLOR
+0002B4 0E00           00061         movlw   H'00'
+0002B6 6E1B           00062         movwf   INTENS
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00063 
+0002B8 0EE0           00064         movlw   B'11100000'             ; "all colors off"
+0002BA 6E1E           00065         movwf   COMMAND
+0002BC EC10 F004      00066         call    send1wire
+                      00067 
+                      00068 ;       call    chain
+0002C0 EFAA F001      00069         goto    intensloop
+0002C4 EF8F F001      00070         goto    main
+                      00071 
+0002C8                00072 test_adc:
+0002C8 0E00           00073         movlw   H'00'
+0002CA ECFB F003      00074         call    read_int_ADC_chan
+0002CE 5016           00075         movf    ANALOGH, w
+0002D0 EC4F F003      00076         call    SENDHEX
+0002D4 5017           00077         movf    ANALOGL, w
+0002D6 EC4F F003      00078         call    SENDHEX
+0002DA EC21 F003      00079         call    SENDCMNDP2CR
+                      00080 
+0002DE 0E0A           00081         movlw   H'0A'
+0002E0 2617           00082         addwf   ANALOGL
+0002E2 6AE8           00083         clrf    WREG
+0002E4 2216           00084         addwfc  ANALOGH
+                      00085 
+                      00086 
+0002E6 B016           00087         btfsc   ANALOGH, 0              ; 'sign'
+0002E8 EF7B F001      00088         goto    test_adc_pos
+                      00089 
+0002EC                00090 test_adc_neg:
+0002EC 0E04           00091         movlw   B'00000100'
+0002EE 6E1C           00092         movwf   COLOR
+0002F0 1E17           00093         comf    ANALOGL         ; invert LSByte
+0002F2 EF7D F001      00094         goto    test_adc_show
+                      00095 
+0002F6                00096 test_adc_pos:
+0002F6 0E01           00097         movlw   B'00000001'
+0002F8 6E1C           00098         movwf   COLOR   
+                      00099 
+0002FA                00100 test_adc_show:
+0002FA 0E0F           00101         movlw   B'00001111'
+0002FC 1617           00102         andwf   ANALOGL
+0002FE 90D8           00103         bcf             STATUS, C
+000300 3217           00104         rrcf    ANALOGL                         ; scale /2
+000302 90D8           00105         bcf             STATUS, C
+000304 3217           00106         rrcf    ANALOGL                         ; scale /2
+000306 90D8           00107         bcf             STATUS, C
+000308 3217           00108         rrcf    ANALOGL                         ; scale /2
+                      00109 
+00030A C017 F01B      00110         movff   ANALOGL, INTENS
+00030E ECC1 F001      00111         call    sendcmdbyte
+000312 1E1C           00112         comf    COLOR
+000314 6A1B           00113         clrf    INTENS
+000316 ECC1 F001      00114         call    sendcmdbyte
+                      00115 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00031A EF64 F001      00116         goto    test_adc
+                      00117 
+                      00118 
+00031E                00119 main:
+00031E ECB7 F004      00120         call    ui_show_addr
+000322 EC31 F004      00121         call    ui_main_menu
+                      00122 
+000326 0E0D           00123         movlw   '\r'                    ; carriage return
+000328 180C           00124         xorwf   SCRATCH0, w
+00032A E014           00125         bz              intensloop
+                      00126 
+00032C 0EE0           00127         movlw   B'11100000'             ; "all colors off"
+00032E 6E1E           00128         movwf   COMMAND
+000330 EC10 F004      00129         call    send1wire
+                      00130 
+000334 0E07           00131         movlw   B'00000111'
+000336 161C           00132         andwf   COLOR
+                      00133 
+000338 501C           00134         movf    COLOR, w
+00033A ECEE F003      00135         call    SENDBIN
+00033E EC21 F003      00136         call    SENDCMNDP2CR
+                      00137 
+000342 501B           00138         movf    INTENS, w
+000344 ECEE F003      00139         call    SENDBIN
+000348 EC21 F003      00140         call    SENDCMNDP2CR
+                      00141 
+00034C ECC1 F001      00142         call    sendcmdbyte
+                      00143 
+000350 EF8F F001      00144         goto    main
+                      00145 
+000354                00146 intensloop:
+000354 0E0A           00147         movlw   H'0A'
+000356 6E0D           00148         movwf   SCRATCH1
+                      00149 ;       clrf    INTENS
+000358 0E00           00150         movlw   H'00'
+00035A 6E1B           00151         movwf   INTENS
+                      00152 
+00035C                00153 intensloop_up:
+00035C 2A1B           00154         incf    INTENS
+00035E ECC1 F001      00155         call    sendcmdbyte
+000362 2E0D           00156         decfsz  SCRATCH1
+000364 EFAE F001      00157         goto    intensloop_up
+                      00158 
+                      00159 ;       call    delay20sec              ; delay to see what happened...
+                      00160 ;       comf    ADDR
+                      00161 
+000368                00162 intensloop2:
+000368 0E0A           00163         movlw   H'0A'
+00036A 6E0D           00164         movwf   SCRATCH1
+00036C                00165 intensloop_dn:
+00036C 061B           00166         decf    INTENS
+00036E ECC1 F001      00167         call    sendcmdbyte
+000372 2E0D           00168         decfsz  SCRATCH1
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000374 EFB6 F001      00169         goto    intensloop_dn
+                      00170 
+000378                00171 colorchg:
+                      00172 ;       call    delay20sec              ; delay to see what happened...
+                      00173 ;       call    delaysec
+000378 EC22 F002      00174         call    delaysec
+                      00175 
+00037C 2A1C           00176         incf    COLOR
+                      00177 
+                      00178 ;       goto    main
+00037E EFAA F001      00179         goto    intensloop
+                      00180 
+                      00181 
+000382                00182 sendcmdbyte:
+                      00183 
+000382 501B           00184         movf    INTENS, w
+000384 6E1E           00185         movwf   COMMAND
+000386 501C           00186         movf    COLOR, w
+000388 0B07           00187         andlw   B'00000111'     ; only valid colors...
+00038A 3AE8           00188         swapf   WREG
+00038C 90D8           00189         bcf             STATUS, C
+00038E 36E8           00190         rlcf    WREG
+000390 121E           00191         iorwf   COMMAND
+000392 EC10 F004      00192         call    send1wire
+                      00193 ;       sendstring      str_sent_cmd
+                      00194 ;       movf    ADDR, w
+                      00195 ;       call    sendbin
+                      00196 ;       movlw   ' '
+                      00197 ;       call    SENDCMNDP2
+                      00198 ;       call    SENDCMNDP2
+                      00199 ;       movf    COMMAND, w
+                      00200 ;       call    sendbin
+                      00201 ;       call    SENDCMNDP2CR
+                      00202 
+                      00203 ;       call    delaysec
+                      00204 
+000396 0012           00205         return
+                      00206 
+                      00207 
+                      00208 
+000398                00209 stop:
+000398 EFCC F001      00210         goto    stop
+                      00211 
+                      00212 
+                      00213 #include        "ports.inc"
+                      00001 ; $Id: ports.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $
+00039C                00002 str_ports:
+00039C 4924 3A64 7020 00003         DW      "$Id: ports.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $\r\n\x00"
+       726F 7374 692E 
+       636E 762C 3120 
+       322E 3220 3030 
+       2F35 3730 332F 
+       2031 3132 333A 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+       3A31 3133 7420 
+       6967 7370 6E6F 
+       4520 7078 2420 
+       0A0D 0000 
+                      00004 
+                      00005 
+                      00006 
+0003D6                00007 init_ports:
+                      00008 
+0003D6 0E0E           00009         MOVLW B'00001110' ; Configure A/D
+0003D8 6EC1           00010         MOVWF ADCON1 ; for digital inputs // except AN0
+0003DA 0E07           00011         MOVLW 07h ; Configure comparators
+0003DC 6EB4           00012         MOVWF CMCON ; for digital input
+                      00013 
+                      00014 
+0003DE 9C94           00015         bcf                     TRISC, 6        ; Tx
+0003E0 8E94           00016         bsf                     TRISC, 7        ; Rx
+                      00017 
+0003E2 9E95           00018         bcf                     SDIOTRIS, S_DO
+                      00019 
+0003E4 8095           00020         bsf                     SDIOTRIS, ACCEL_X
+0003E6 9295           00021         bcf                     SDIOTRIS, ACCEL_PWR
+                      00022 
+                      00023 
+0003E8 0012           00024         return
+                      00214 ;#include       "fakespi.inc"
+                      00215 #include        "delay.inc"
+                      00001 ; $Id: delay.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $
+                      00002 
+                      00003 ; copied from pdasdl01.h 2004/03/17 by Tim Gipson for LCMEMII::HRU
+                      00004 ; imdelay.h
+                      00005 
+0003EA                00006 str_delay_ver:
+0003EA 4924 3A64 6420 00007         DW      "$Id: delay.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $\r\n\x00"
+       6C65 7961 692E 
+       636E 762C 3120 
+       322E 3220 3030 
+       2F35 3730 332F 
+       2031 3132 333A 
+       3A31 3133 7420 
+       6967 7370 6E6F 
+       4520 7078 2420 
+       0A0D 0000 
+                      00008 
+                      00009 ;------------------------------------------------------------------------
+000424                00010 delaymsec4M:    ; delay 1 millisecond with 4MHz crystal
+000424 0E17           00011         movlw   17h
+000426 6E02           00012         movwf   del3
+000428                00013 d4m3:
+000428 0E02           00014         movlw   2h
+00042A 6E03           00015         movwf   del2
+00042C                00016 d4m2:
+00042C 0E06           00017         movlw   6h
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00042E 6E04           00018         movwf   del1
+000430                00019 d4m1:
+000430 2E04           00020         decfsz  del1,f
+000432 EF18 F002      00021         goto    d4m1
+                      00022 
+000436 2E03           00023         decfsz  del2,f
+000438 EF16 F002      00024         goto    d4m2
+                      00025 
+00043C 2E02           00026         decfsz  del3,f
+00043E EF14 F002      00027         goto    d4m3
+                      00028 
+000442 0C00           00029         retlw   0
+                      00030 
+                      00031 ;------------------------------------------------------------------------
+                      00032 
+000444                00033 delaysec:       ; delay 1 second with 4MHz crystal
+000444 0E02           00034         movlw   02h             ;17h
+000446 6E02           00035         movwf   del3
+000448                00036 d3:
+000448 0E80           00037         movlw   80h
+00044A 6E03           00038         movwf   del2
+00044C                00039 d2:
+00044C 0E70           00040         movlw   70h
+00044E 6E04           00041         movwf   del1
+000450                00042 d1:
+000450 2E04           00043         decfsz  del1,f
+000452 EF28 F002      00044         goto    d1
+                      00045 
+000456 2E03           00046         decfsz  del2,f
+000458 EF26 F002      00047         goto    d2
+                      00048 
+00045C 2E02           00049         decfsz  del3,f
+00045E EF24 F002      00050         goto    d3
+                      00051 
+000462 0C00           00052         retlw   0
+                      00053 
+                      00054 ;------------------------------------------------------------------------
+000464                00055 delay20k:       ; delay for 20 kHz with 8MHz crystal
+000464 0E03           00056         movlw   03h
+000466 6E03           00057         movwf   del2
+000468                00058 d2m2:
+000468 0E08           00059         movlw   8h
+00046A 6E04           00060         movwf   del1
+00046C                00061 d2m1:
+00046C 2E04           00062         decfsz  del1,f
+00046E EF36 F002      00063         goto    d2m1
+                      00064 
+000472 2E03           00065         decfsz  del2,f
+000474 EF34 F002      00066         goto    d2m2
+                      00067 
+000478 0C00           00068         retlw   0
+                      00069 
+                      00070 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00071 ;------------------------------------------------------------------------
+00047A                00072 delaymsec:      ; delay 1 millisecond with 10MHz crystal
+00047A 0E05           00073         movlw   05h
+00047C 6E02           00074         movwf   del3
+00047E                00075 dm3:
+00047E 0E13           00076         movlw   13h
+000480 6E03           00077         movwf   del2
+000482                00078 dm2:
+000482 0E08           00079         movlw   8h
+000484 6E04           00080         movwf   del1
+000486                00081 dm1:
+000486 2E04           00082         decfsz  del1,f
+000488 EF43 F002      00083         goto    dm1
+                      00084 
+00048C 2E03           00085         decfsz  del2,f
+00048E EF41 F002      00086         goto    dm2
+                      00087 
+000492 2E02           00088         decfsz  del3,f
+000494 EF3F F002      00089         goto    dm3
+                      00090 
+000498 0C00           00091         retlw   0
+                      00092 
+                      00093 ;at 0.4 instruction per uSec, 1mSec needs 2500 instructions
+                      00094 ;done with any of the following values: time = a3 * (6 + (a2 * (6 + (a1 * 4))))
+                      00095 ;a3 = 1 a2 = 14 a1 = 43.
+                      00096 ;a3 = 1 a2 = 29 a1 = 20.
+                      00097 ;a3 = 1 a2 = 43 a1 = 13.
+                      00098 ;a3 = 1 a2 = 178 a1 = 2.
+                      00099 ;a3 = 2 a2 = 2 a1 = 154.
+                      00100 ;a3 = 5 a2 = 1 a1 = 122.
+                      00101 ;a3 = 5 a2 = 13 a1 = 8.
+                      00102 ;a3 = 5 a2 = 19 a1 = 5.
+                      00103 ;a3 = 10 a2 = 2 a1 = 29.
+                      00104 ;a3 = 25 a2 = 1 a1 = 22.
+                      00105 ;a3 = 50 a2 = 2 a1 = 4.
+                      00106 ;a3 = 125 a2 = 1 a1 = 2.
+                      00107 ;------------------------------------------------------------------------
+                      00108 
+00049A                00109 delayhmsec:     ; delay 1/2 millisecond with 10MHz crystal
+00049A 0E05           00110         movlw   05h
+00049C 6E02           00111         movwf   del3
+00049E                00112 dhm3:
+00049E 0E13           00113         movlw   13h
+0004A0 6E03           00114         movwf   del2
+0004A2                00115 dhm2:
+0004A2 0E04           00116         movlw   4h
+0004A4 6E04           00117         movwf   del1
+0004A6                00118 dhm1:
+0004A6 2E04           00119         decfsz  del1,f
+0004A8 EF53 F002      00120         goto    dhm1
+                      00121 
+0004AC 2E03           00122         decfsz  del2,f
+0004AE EF51 F002      00123         goto    dhm2
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00124 
+0004B2 2E02           00125         decfsz  del3,f
+0004B4 EF4F F002      00126         goto    dhm3
+                      00127 
+0004B8 0C00           00128         retlw   0
+                      00129 
+                      00130 ;------------------------------------------------------------------------
+                      00131 
+0004BA                00132 delaysome:      ; delay x usecond with 10MHz crystal
+0004BA 0E04           00133         movlw   04h
+0004BC 6E02           00134         movwf   del3
+0004BE                00135 ds3:
+0004BE 0E05           00136         movlw   5h
+0004C0 6E03           00137         movwf   del2
+0004C2                00138 ds2:
+0004C2 0E04           00139         movlw   4h
+0004C4 6E04           00140         movwf   del1
+0004C6                00141 ds1:
+0004C6 2E04           00142         decfsz  del1,f
+0004C8 EF63 F002      00143         goto    ds1
+                      00144 
+0004CC 2E03           00145         decfsz  del2,f
+0004CE EF61 F002      00146         goto    ds2
+                      00147 
+0004D2 2E02           00148         decfsz  del3,f
+0004D4 EF5F F002      00149         goto    ds3
+                      00150 
+0004D8 0C00           00151         retlw   0
+                      00152 ;------------------------------------------------------------------------
+                      00153 
+0004DA                00154 delayhsome:     ; delay 1/2 x usecond with 10MHz crystal
+0004DA 0E04           00155         movlw   04h
+0004DC 6E02           00156         movwf   del3
+0004DE                00157 dhs3:
+0004DE 0E05           00158         movlw   5h
+0004E0 6E03           00159         movwf   del2
+0004E2                00160 dhs2:
+0004E2 0E02           00161         movlw   2h
+0004E4 6E04           00162         movwf   del1
+0004E6                00163 dhs1:
+0004E6 2E04           00164         decfsz  del1,f
+0004E8 EF73 F002      00165         goto    dhs1
+                      00166 
+0004EC 2E03           00167         decfsz  del2,f
+0004EE EF71 F002      00168         goto    dhs2
+                      00169 
+0004F2 2E02           00170         decfsz  del3,f
+0004F4 EF6F F002      00171         goto    dhs3
+                      00172 
+0004F8 0C00           00173         retlw   0
+                      00174 
+                      00175 ;----------------------------------
+0004FA                00176 delay20msec:
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0004FA EC3D F002      00177         call    delaymsec
+0004FE EC3D F002      00178         call    delaymsec
+000502 EC3D F002      00179         call    delaymsec
+000506 EC3D F002      00180         call    delaymsec
+00050A EC3D F002      00181         call    delaymsec
+00050E EC3D F002      00182         call    delaymsec
+000512 EC3D F002      00183         call    delaymsec
+000516 EC3D F002      00184         call    delaymsec
+00051A EC3D F002      00185         call    delaymsec
+00051E EC3D F002      00186         call    delaymsec
+000522 EC3D F002      00187         call    delaymsec
+000526 EC3D F002      00188         call    delaymsec
+00052A EC3D F002      00189         call    delaymsec
+00052E EC3D F002      00190         call    delaymsec
+000532 EC3D F002      00191         call    delaymsec
+000536 EC3D F002      00192         call    delaymsec
+00053A EC3D F002      00193         call    delaymsec
+00053E EC3D F002      00194         call    delaymsec
+000542 EC3D F002      00195         call    delaymsec
+000546 0012           00196         return
+                      00197 
+                      00198 ;----------------------------------
+000548                00199 delay20sec:
+000548 EC22 F002      00200         call    delaysec
+00054C EC22 F002      00201         call    delaysec
+000550 EC22 F002      00202         call    delaysec
+000554 EC22 F002      00203         call    delaysec
+000558 EC22 F002      00204         call    delaysec
+00055C EC22 F002      00205         call    delaysec
+000560 EC22 F002      00206         call    delaysec
+000564 EC22 F002      00207         call    delaysec
+000568 EC22 F002      00208         call    delaysec
+00056C EC22 F002      00209         call    delaysec
+000570 EC22 F002      00210         call    delaysec
+000574 EC22 F002      00211         call    delaysec
+000578 EC22 F002      00212         call    delaysec
+00057C EC22 F002      00213         call    delaysec
+000580 EC22 F002      00214         call    delaysec
+000584 EC22 F002      00215         call    delaysec
+000588 EC22 F002      00216         call    delaysec
+00058C EC22 F002      00217         call    delaysec
+000590 EC22 F002      00218         call    delaysec
+000594 EC22 F002      00219         call    delaysec
+000598 0012           00220         return
+                      00221 
+                      00222 
+                      00223 
+00059A                00224 delaybit:
+00059A 6A05           00225         clrf WAITER
+                      00226         ;movlw  H'01'
+                      00227         ;movwf  WAITER
+00059C                00228 delayb1:        
+00059C 2E05           00229         decfsz  WAITER
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00059E EFCE F002      00230         goto    delayb1
+                      00231 
+0005A2 0012           00232         return
+                      00233 
+0005A4                00234 delay_40:
+0005A4                00235 delayhalfbit:
+0005A4 0E40           00236         movlw   H'40'   ;80
+0005A6 6E05           00237         movwf   WAITER
+                      00238 
+0005A8                00239 delay40_1:      
+0005A8 2E05           00240         decfsz  WAITER
+0005AA EFD4 F002      00241         goto    delay40_1
+0005AE 0012           00242         return
+                      00243 
+                      00244 
+0005B0                00245 delay_20:
+                      00246 ;delayqbit:
+0005B0 0E20           00247         movlw   H'20'   ;40
+0005B2 6E05           00248         movwf   WAITER
+                      00249 
+0005B4                00250 delay20_1:      
+0005B4 2E05           00251         decfsz  WAITER
+0005B6 EFDA F002      00252         goto    delay20_1
+0005BA 0012           00253         return
+                      00254 
+0005BC                00255 delay_68:
+                      00256 ;delayqbit:
+0005BC 0E44           00257         movlw   D'68'
+0005BE 6E05           00258         movwf   WAITER
+                      00259 
+0005C0                00260 delay68_1:      
+0005C0 2E05           00261         decfsz  WAITER
+0005C2 EFE0 F002      00262         goto    delay68_1
+0005C6 0012           00263         return
+                      00264 
+                      00265 
+                      00266 
+                      00267 
+0005C8                00268 delaybit_wusb:
+                      00269 ;       return
+                      00270 
+                      00271 ;       ;clrf WAITER
+0005C8 0E01           00272         movlw   H'01'
+0005CA 6E05           00273         movwf   WAITER
+0005CC                00274 delayb1_wusb:   
+0005CC 2E05           00275         decfsz  WAITER
+0005CE EFE6 F002      00276         goto    delayb1_wusb
+                      00277 
+0005D2 0012           00278         return
+                      00216 #include        "4220uart.inc"
+                      00001 ; $Id: 4220uart.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $
+0005D4                00002 str_uart_ver:
+0005D4 4924 3A64 3420 00003         DW      "$Id: 4220uart.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $\r\n\x00"
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+       3232 7530 7261 
+       2E74 6E69 2C63 
+       2076 2E31 2031 
+       3032 3530 302F 
+       2F37 3932 3120 
+       3A34 3835 353A 
+       2032 6774 7069 
+       6F73 206E 7845 
+       2070 0D24 000A 
+                      00004 
+                      00005 
+                      00006 ; Drop-in SPI routines for PIC18F4220
+                      00007 
+                      00008 
+                      00009 
+000610                00010 INITUSART:
+                      00011 
+000610 9EAB           00012         BCF     RCSTA,SPEN      ; Serial port disable
+000612 9AAB           00013         BCF     RCSTA,SREN      ; Disable single reception
+000614 98AB           00014         BCF     RCSTA,CREN      ; Disable continious reception
+                      00015 
+                      00016 
+000616 8E94           00017         bsf             TRISC, 7        ; RC7 input (Rx)
+000618 9C94           00018         bcf             TRISC, 6        ; RC6 (Tx)
+                      00019 
+                      00020 
+                      00021 ;--------------- 115,200 bps @ 48MHz
+                      00022 ;       movlw   D'00'
+                      00023 ;       movwf   SPBRGH
+                      00024 ;       movlw   D'25'
+                      00025 ;       movwf   SPBRG
+                      00026 ;
+                      00027 ;       bsf             BAUDCON, BRG16          ; enable 16-bit BRG
+                      00028 ;       bcf             TXSTA, BRGH                     ; disable hi-speed baud clock
+                      00029 ;---------------
+                      00030 
+                      00031 
+                      00032 ;--------------- 115,200 bps @ 8MHz
+00061A 0E00           00033         movlw   D'00'
+00061C 6EB0           00034         movwf   SPBRGH
+00061E 0E10           00035         movlw   D'16'
+000620 6EAF           00036         movwf   SPBRG
+                      00037 
+000622 86B8           00038         bsf             BAUDCON, BRG16          ; enable 16-bit BRG
+000624 84AC           00039         bsf             TXSTA, BRGH                     ; enable hi-speed baud clock
+                      00040 ;---------------
+                      00041 
+                      00042 
+                      00043 
+                      00044         ;MOVWF  SPBRG           ; Initialise baud rate generator
+                      00045 ;       movff   BAUD, SPBRG     ; Initialize baud rate generator with already-defined rate
+                      00046 
+                      00047 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00048         ;bsf            TXSTA, BRGH                                             ; Enable hi-speed baud c
+                            lock
+000626 8EAC           00049         BSF     TXSTA,CSRC      ; Master mode, clk from BRG
+000628 9CAC           00050         BCF     TXSTA,TX9       ; Select 8 bit tansmission
+00062A 9AAC           00051         BCF     TXSTA,TXEN      ; Transmission disabled
+00062C 98AC           00052         BCF     TXSTA,SYNC      ; Asynchronous mode
+                      00053 
+00062E 9CAB           00054         BCF     RCSTA,RX9       ; Select 8 bit reception
+                      00055 
+000630 8EAB           00056         BSF     RCSTA,SPEN      ; Serial port enable
+000632 8AAC           00057         BSF     TXSTA,TXEN      ; Enable transmission
+                      00058         ;BCF    PIE1,RC1IE
+000634 88AB           00059         BSF     RCSTA,CREN      ; Enable reception
+                      00060 
+                      00061 
+000636 0012           00062         return
+                      00063 
+                      00064 ; ---------------------------------------------
+000638                00065 SENDCMNDP2:
+000638                00066 SENDCMD:                        ; Send Wreg contents to USART
+                      00067 
+000638 A2AC           00068         BTFSS   TXSTA,TRMT      ; Wait until transmitter ready to send next byte
+00063A EF1C F003      00069         GOTO    SENDCMD
+00063E 6EAD           00070         MOVWF   TXREG           ; Transfer next byte from WREG to 
+                      00071                         ; transmitter register
+000640 0012           00072         RETURN
+                      00073 
+                      00074 
+000642                00075 SENDCMNDP2CR:
+000642 0E0D           00076         movlw   '\r'
+000644 EC1C F003      00077         call    SENDCMD
+000648 0E0A           00078         movlw   '\n'
+00064A EC1C F003      00079         call    SENDCMD
+00064E 0012           00080         return
+                      00081 
+                      00082 ; ---------------------------------------------
+000650                00083 GETCMD:
+000650 AA9E           00084         btfss   PIR1, RCIF                                      ; byte received on USART?
+000652 EF28 F003      00085         goto    GETCMD                                          ; if no
+000656 50AE           00086         movf    RCREG,0                                         ; if yes - to W
+                      00087         ;movwf  BYTE                                            ; store it here
+000658 0012           00088         return
+                      00089 
+                      00090 
+                      00091 ; ---------------------------------------------
+                      00092 ; Return 0xFF if byte received, else 0x00
+                      00093 
+00065A                00094 ISCMD:
+00065A AA9E           00095         btfss   PIR1, RCIF
+00065C 0C00           00096         retlw   H'00'
+00065E 50AE           00097         movf    RCREG, 0
+000660 0CFF           00098         retlw   H'FF'
+                      00217 #include        "lcmhex01.inc"
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ; $Id: lcmhex01.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $
+000662                00002 str_hex_ver:
+000662 4924 3A64 6C20 00003         DW      "$Id: lcmhex01.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $\r\n\x00"
+       6D63 6568 3078 
+       2E31 6E69 2C63 
+       2076 2E31 2031 
+       3032 3530 302F 
+       2F37 3932 3120 
+       3A34 3835 353A 
+       2032 6774 7069 
+       6F73 206E 7845 
+       2070 0D24 000A 
+                      00004 
+                      00005 
+                      00006 ; copied to lcmhex01.h for pic18f6620
+                      00007 ; 2004/01/26 by Tim Gipson for LCMEM::SDR
+                      00008 ; bank switching removed
+                      00009 
+                      00010 ; imhex01.h for pic16f874
+                      00011 ; 11/02/2001 Gert Muller for IMEMS
+                      00012 ; no change
+                      00013 
+                      00014 ; sdhex01.h for pic16f873
+                      00015 ; 5/4/2001 Gert Muller for SDBS
+                      00016 
+                      00017 ; h01hex.h for pic17c
+                      00018 ; recieving values in ASCII as two characters and convert to one byte  10/17/2000 - Gert Muller
+                      00019 ; sending values in wreg as two hexadecimal digits  7/31/2000 - Gert Muller
+                      00020 
+00069E                00021 SENDHEX:
+                      00022         ;BCF    STATUS, RP0
+00069E 6E08           00023         MOVWF   HEXTEMP
+0006A0 0EF0           00024         MOVLW   B'11110000'
+0006A2 1408           00025         ANDWF   HEXTEMP,W
+0006A4 6E09           00026         MOVWF   HEXTEMP1
+0006A6 3809           00027         SWAPF   HEXTEMP1,W
+0006A8 EC5B F003      00028         CALL    SENDNIB
+                      00029 
+0006AC 0E0F           00030         MOVLW   B'00001111'
+0006AE 1408           00031         ANDWF   HEXTEMP,W
+0006B0 EC5B F003      00032         CALL    SENDNIB
+                      00033 
+0006B4 0012           00034         RETURN
+                      00035 
+                      00036 ;------------------------------------------------------------------
+                      00037 
+0006B6                00038 SENDNIB:
+0006B6 6E09           00039         MOVWF   HEXTEMP1
+0006B8 0809           00040         SUBLW   H'09'
+0006BA B0D8           00041         BTFSC   STATUS,C
+0006BC EF67 F003      00042         GOTO    SENDHEXNUM
+0006C0 EF62 F003      00043         GOTO    SENDHEXALPHA
+0006C4                00044 SENDHEXALPHA:
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0006C4 0E37           00045         MOVLW   H'37'
+0006C6 2409           00046         ADDWF   HEXTEMP1,W      
+0006C8 EC1C F003      00047         CALL    SENDCMNDP2
+0006CC 0012           00048         RETURN
+0006CE                00049 SENDHEXNUM:
+0006CE 0E30           00050         MOVLW   H'30'
+0006D0 2409           00051         ADDWF   HEXTEMP1,W      
+0006D2 EC1C F003      00052         CALL    SENDCMNDP2
+0006D6 0012           00053         RETURN
+                      00054 
+                      00055 ;-----------------------------------------------------------------
+                      00056 
+0006D8                00057 ASCII2HEX:                      ; converts SERR01 and SERR02 to HEXCONV
+                      00058         ;BCF    STATUS,RP0      ; bank 0
+0006D8 500A           00059         MOVF    SERR01,W
+0006DA 6E06           00060         MOVWF   HEXCONV
+0006DC 0840           00061         SUBLW   H'40'
+0006DE B0D8           00062         BTFSC   STATUS,C
+0006E0 EF79 F003      00063         GOTO    ASCDIGIT1
+0006E4 EF74 F003      00064         GOTO    ASCALPHA1
+0006E8                00065 ASCALPHA1:
+0006E8 0E37           00066         MOVLW   H'37'
+0006EA 5E06           00067         SUBWF   HEXCONV,F
+0006EC 3A06           00068         SWAPF   HEXCONV,F
+0006EE EF7E F003      00069         GOTO    NEXTNIB
+0006F2                00070 ASCDIGIT1:
+0006F2 0E30           00071         MOVLW   H'30'
+0006F4 5E06           00072         SUBWF   HEXCONV,F
+0006F6 3A06           00073         SWAPF   HEXCONV,F
+0006F8 EF7E F003      00074         GOTO    NEXTNIB
+0006FC                00075 NEXTNIB:
+0006FC 5006           00076         MOVF    HEXCONV,W
+                      00077 ;       CALL    SENDHEX
+0006FE 0E00           00078         MOVLW   H'00'
+                      00079 ;       CALL    SENDHEX
+                      00080 
+                      00081         ;BCF    STATUS, RP0
+000700 500B           00082         MOVF    SERR02,W
+000702 6E07           00083         MOVWF   HEXCONV1
+000704 0840           00084         SUBLW   H'40'
+000706 B0D8           00085         BTFSC   STATUS,W
+000708 EF8E F003      00086         GOTO    ASCDIGIT2
+00070C EF88 F003      00087         GOTO    ASCALPHA2       
+000710                00088 ASCALPHA2:
+000710 0E37           00089         MOVLW   H'37'
+000712 5E07           00090         SUBWF   HEXCONV1,F
+000714 5007           00091         MOVF    HEXCONV1,W
+000716 2606           00092         ADDWF   HEXCONV,F
+000718 EF94 F003      00093         GOTO    DONENIB
+00071C                00094 ASCDIGIT2:
+00071C 0E30           00095         MOVLW   H'30'
+00071E 5E07           00096         SUBWF   HEXCONV1,F
+000720 5007           00097         MOVF    HEXCONV1,W
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000722 2606           00098         ADDWF   HEXCONV,F
+000724 EF94 F003      00099         GOTO    DONENIB
+000728                00100 DONENIB:
+000728 5007           00101         MOVF    HEXCONV1,W
+                      00102 ;
+00072A EC4F F003      00103         CALL    SENDHEX
+                      00104         ;BCF    STATUS,RP0      ; BANK 0
+00072E 5006           00105         MOVF    HEXCONV,W
+000730 0012           00106         RETURN
+                      00107 
+                      00218 #include        "defs.inc"
+                      00001 ; $Id: defs.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $
+                      00002 
+                      00003 ; Port and bit definitions
+                      00004 
+                      00005 ; FakeSDI serial
+  00000F83            00006 SDIO            equ     PORTD
+  00000F95            00007 SDIOTRIS        equ     TRISD
+  00000001            00008 ACCEL_PWR       equ     1
+  00000007            00009 S_DO            equ     7                       ; NOTE: SD_I / SD_O defined here relative to PIC, not AD
+                            C!
+  00000000            00010 ACCEL_X         equ     0
+                      00011 ;ACCEL_Y                equ     2
+                      00012 
+                      00013 
+000732                00014 str_defs_ver:
+000732 4924 3A64 6420 00015         DW      "$Id: defs.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $\r\n\x00"
+       6665 2E73 6E69 
+       2C63 2076 2E31 
+       2032 3032 3530 
+       302F 2F37 3133 
+       3220 3A31 3133 
+       333A 2031 6774 
+       7069 6F73 206E 
+       7845 2070 0D24 
+       000A 
+                      00219 #include        "vars.inc"
+                      00001 ; $Id: vars.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $
+00076A                00002 str_vars_ver:
+00076A 4924 3A64 7620 00003         DW      "$Id: vars.inc,v 1.2 2005/07/31 21:31:31 tgipson Exp $"
+       7261 2E73 6E69 
+       2C63 2076 2E31 
+       2032 3032 3530 
+       302F 2F37 3133 
+       3220 3A31 3133 
+       333A 2031 6774 
+       7069 6F73 206E 
+       7845 2070 0024 
+                      00004 
+                      00005 
+                      00006 ; Variable (RAM) allocation
+                      00007 
+                      00008 ; ------------------------------
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00009 
+                      00010         cblock 0
+                      00011 
+                      00012         ; for fake SPI
+  00000000            00013                 RWDATA
+  00000001            00014                 ROTATE
+                      00015 
+                      00016         ; for delay functions
+  00000002            00017                 del3
+  00000003            00018                 del2
+  00000004            00019                 del1
+                      00020                 ;waiter
+  00000005            00021                 WAITER
+                      00022 
+                      00023         ; for hex conv.
+  00000006            00024                 HEXCONV
+  00000007            00025                 HEXCONV1
+  00000008            00026                 HEXTEMP
+  00000009            00027                 HEXTEMP1
+  0000000A            00028                 SERR01
+  0000000B            00029                 SERR02
+                      00030 
+                      00031         ; scratch
+  0000000C            00032                 SCRATCH0
+  0000000D            00033                 SCRATCH1
+  0000000E            00034                 SCRATCH2
+  0000000F            00035                 SCRATCH3
+  00000010            00036                 SCRATCH4
+  00000011            00037                 SCRATCH5
+                      00038 
+                      00039         ; ADC result
+  00000012            00040                 ADC3
+  00000013            00041                 ADC2
+  00000014            00042                 ADC1
+  00000015            00043                 ADC0
+                      00044                 ;RES_CHANNEL            ; channel the result read was from. (DEBUG)
+                      00045 
+                      00046 
+                      00047         ; for ADC stuff
+                      00048 ;               CHANNEL         ; current ADC channel
+                      00049 ;               MUXCH           ; current mux channel
+                      00050 ;               NCHAN           ; number of channels of interest
+                      00051 ;               USER_NAVG       ; user-specified number of averages
+                      00052 
+  00000016            00053                 ANALOGH
+  00000017            00054                 ANALOGL
+                      00055 
+                      00056         ; for EEPROM
+  00000018            00057                 EEADDRH
+  00000019            00058                 EEADDRL
+  0000001A            00059                 ROLLOVER
+                      00060 
+                      00061         ; blinky
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  0000001B            00062                 INTENS
+  0000001C            00063                 COLOR
+  0000001D            00064                 ADDR
+  0000001E            00065                 COMMAND
+                      00066 
+                      00067         ; table
+  0000001F            00068                 ADDRTBL         ; Must be last entry!...
+                      00069 
+                      00070         endc
+                      00220 #include        "sendbin.inc"
+                      00001 ; $Id: sendbin.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $
+0007A0                00002 str_sendbin_ver:
+0007A0 4924 3A64 7320 00003         DW      "$Id: sendbin.inc,v 1.1 2005/07/29 14:58:52 tgipson Exp $\r\n\x00"
+       6E65 6264 6E69 
+       692E 636E 762C 
+       3120 312E 3220 
+       3030 2F35 3730 
+       322F 2039 3431 
+       353A 3A38 3235 
+       7420 6967 7370 
+       6E6F 4520 7078 
+       2420 0A0D 0000 
+                      00004 
+                      00005 
+                      00006 ; Binary counterpart to SENDHEX in (lcmhex01.inc)
+                      00007 
+0007DC                00008 sendbin:
+0007DC                00009 SENDBIN:
+0007DC 6E0C           00010         movwf   SCRATCH0                                ; or any temporary variable
+                      00011 
+0007DE 0E08           00012         movlw   H'08'
+0007E0 6E01           00013         movwf   ROTATE                                  ; just another scratch variable
+                      00014 
+0007E2                00015 sendbin1:
+0007E2 0E30           00016         movlw   '0'
+0007E4 BE0C           00017         btfsc   SCRATCH0, 7
+0007E6 0E31           00018         movlw   '1'
+0007E8 EC1C F003      00019         call    SENDCMNDP2
+                      00020 
+0007EC 460C           00021         rlncf   SCRATCH0                                ; test next bit...
+0007EE 2E01           00022         decfsz  ROTATE
+0007F0 EFF1 F003      00023         goto    sendbin1
+                      00024 
+0007F4 0012           00025         return
+                      00221 #include        "4220anlg.inc"
+                      00001 ; $Id: 4220anlg.inc,v 1.1 2005/02/08 22:02:10 tgipson Exp $
+                      00002 
+                      00003 ; Stolen from lcmansen.inc 2005/02/07 by Tim Gipson for ACONDv2
+                      00004 ; lcmansen.inc created 2004/01/29 by Tim Gipson for LCMEM::SDR
+                      00005 ; PIC18F4220 (and others?) ADC channel read functions
+                      00006 
+                      00007 
+                      00008 ;------------------------------------------------------------------------
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00009 ; Reads analog channel stored in WREG (read_int_ADC_chan).
+                      00010 ;       or
+                      00011 ; Reads currently selected channel (read_int_ADC).
+                      00012 ; Result returned in ANALOGH:ANALOGL
+                      00013 
+0007F6                00014 read_int_ADC_chan:
+0007F6 EC06 F004      00015         call    set_int_ADC_chan
+                      00016 
+0007FA                00017 read_int_ADC:
+0007FA 82C2           00018         bsf             ADCON0, 1                                       ; start conversion
+                      00019 
+0007FC                00020 read_int_ADC_wait:
+0007FC B2C2           00021         btfsc   ADCON0, 1                                       ; conversion finished?
+0007FE EFFE F003      00022         goto    read_int_ADC_wait                       ; if no
+                      00023 
+000802 50C4           00024         movf    ADRESH,w
+000804 6E16           00025         movwf   ANALOGH
+                      00026         ;call   SENDHEX
+000806 50C3           00027         movf    ADRESL,w
+000808 6E17           00028         movwf   ANALOGL
+                      00029         ;call   SENDHEX
+                      00030         ;call   SENDCMNDP2CR
+00080A 0012           00031         return
+                      00032 
+                      00033 
+                      00034 ; -------------------------------------------------------------------------
+                      00035 ; Write the analog channel # in WREG to ADCON0 (shifted per ADCON0 requirements), and turn A/D module on
+                      00036 
+00080C                00037 set_int_ADC_chan:
+00080C 90D8           00038         bcf             STATUS, C               ; shift channel # left 2
+00080E 32E8           00039         rrcf    WREG                    ; ...
+000810 90D8           00040         bcf             STATUS, C               ;
+000812 32E8           00041         rrcf    WREG                    ;
+000814 80E8           00042         bsf             WREG, 0                 ; will turn A/D module on
+000816 6EC2           00043         movwf   ADCON0
+000818 0012           00044         return
+                      00045 
+                      00046 ; -------------------------------------------------------------------------
+                      00047 ; Setup justification and acq. time
+                      00048 
+00081A                00049 init_int_ADC:
+00081A 0EBE           00050         movlw   B'10111110'             ; Right justified, acquisition time 20AD (slowest), conversion c
+                            lock Fosc/64 (slowest)
+00081C 6EC0           00051         movwf   ADCON2
+00081E 0012           00052         return
+                      00222 ;#include       "bri_math.inc"  ; average
+                      00223 ;#include       "ltc2418.inc"
+                      00224 ;#include       "node.inc"
+                      00225 ;#include       "ui.inc"
+                      00226 ;#include       "eeprom.inc"
+                      00227 ;#include       "test.inc"
+                      00228 #include        "onewire.inc"
+                      00001 ; $Id: $
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00002 
+                      00003 
+                      00004 ; Routines for 1-wire write-only interface.
+                      00005 
+                      00006 ; -------------------------------------------------
+                      00007 ; Send byte in WREG on 1-wire interface
+                      00008 ; Assumes master clock running at 2x of slave clock
+                      00009 
+                      00010 #define         delay_one       delay_40
+                      00011 #define         delay_zero      delay_20
+                      00012 ;#define                delay_dt        delaybit
+                      00013 
+                      00014 #define         delay_dt        delay_68
+                      00015 
+000820                00016 send1wire:
+000820 EC2A F004      00017         call    send1wire_start
+000824 501D           00018         movf    ADDR, w
+000826 EC19 F004      00019         call    send1wire_byte
+00082A 501E           00020         movf    COMMAND, w
+00082C EC19 F004      00021         call    send1wire_byte
+                      00022 
+                      00023 ;       call    delaybit                ; long delay forced for WDT resets
+                      00024 ;       call    delaybit
+                      00025 ;       call    delaybit
+                      00026 ;       call    delaybit
+                      00027 ;       call    delaybit
+                      00028 ;       call    delaybit
+                      00029 ;       call    delaybit
+                      00030 ;       call    delaybit
+                      00031 ;       call    delaybit                ; long delay forced for WDT resets
+                      00032 ;       call    delaybit
+                      00033 ;       call    delaybit
+                      00034 ;       call    delaybit
+                      00035 ;       call    delaybit
+                      00036 ;       call    delaybit
+                      00037 ;       call    delaybit
+                      00038 ;       call    delaybit
+000830 0012           00039         return
+                      00040 
+                      00041 
+                      00042 ; -------------------------------
+                      00043 
+000832                00044 send1wire_byte:
+000832 6E00           00045         movwf   RWDATA
+000834 0E08           00046         movlw   H'08'
+000836 6E01           00047         movwf   ROTATE
+                      00048 
+000838                00049 send1wire2:
+000838 8E83           00050         bsf             SDIO, S_DO              ; Start next bit
+00083A ECD8 F002      00051         call    delay_zero              ; delay for '0' bit
+00083E 3600           00052         rlcf    RWDATA                  ; shift leftmost bit into carry
+000840 B0D8           00053         btfsc   STATUS, C               ; is 1?
+000842 ECD2 F002      00054         call    delay_one               ; if yes - delay longer for '1' bit
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 22
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000846 9E83           00055         bcf             SDIO, S_DO              ; end bit
+                      00056 ;       call    delayhalfbit    ; ...
+                      00057 
+000848 ECDE F002      00058         call    delay_dt                ; long delay for extra PWM
+                      00059 
+00084C 2E01           00060         decfsz  ROTATE
+00084E EF1C F004      00061         goto    send1wire2
+                      00062 
+                      00063 
+                      00064 ;       bcf             SDIO, S_DO
+                      00065 ;       call    delaybit
+000852 0012           00066         return
+                      00067 
+                      00068 
+                      00069 
+                      00070 ; -------------------------------
+                      00071 
+000854                00072 send1wire_start:
+000854 8E83           00073         bsf             SDIO, S_DO              ; Start condition
+000856 ECCD F002      00074         call    delaybit                ; = 1 timer rollover on slaves
+                      00075 ;       call    delaybit                ; ...
+                      00076 ;       call    delaybit                ; ...
+                      00077 ;       call    delaybit                ; ...
+                      00078 ;       call    delaybit                ; ...
+00085A 9E83           00079         bcf             SDIO, S_DO              ; end start condition
+00085C ECDE F002      00080         call    delay_dt
+                      00081 
+                      00082 ;       bsf             SDIO, S_DO              ; end start condition
+                      00083 ;       call    delayhalfbit
+                      00084 ;       bcf             SDIO, S_DO              ; end start condition
+000860 0012           00085         return
+                      00229 #include        "ui.inc"
+                      00001 ; $Id: $
+                      00002 
+                      00003 
+                      00004 
+                      00005 ; -------------------------
+                      00006 
+000862                00007 ui_main_menu:
+                      00008         sendstring      str_menu
+000862 0E00               M         movlw   upper   str_menu
+000864 6EF8               M         movwf   TBLPTRU
+000866 0E09               M         movlw   high    str_menu
+000868 6EF7               M         movwf   TBLPTRH
+00086A 0EA0               M         movlw   low             str_menu
+00086C 6EF6               M         movwf   TBLPTRL
+00086E EC2C F001          M         call    stringsender
+                      00009         sendstring      str_menu_2
+000872 0E00               M         movlw   upper   str_menu_2
+000874 6EF8               M         movwf   TBLPTRU
+000876 0E0A               M         movlw   high    str_menu_2
+000878 6EF7               M         movwf   TBLPTRH
+00087A 0E1E               M         movlw   low             str_menu_2
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 23
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00087C 6EF6               M         movwf   TBLPTRL
+00087E EC2C F001          M         call    stringsender
+                      00010 
+000882 EC28 F003      00011         call    GETCMD
+000886 6E0C           00012         movwf   SCRATCH0
+                      00013 
+000888 0E20           00014         movlw   ' '
+00088A 180C           00015         xorwf   SCRATCH0, w
+00088C E025           00016         bz              ui_inc_color
+                      00017 
+00088E 0E52           00018         movlw   'R'
+000890 180C           00019         xorwf   SCRATCH0, w
+000892 E024           00020         bz              ui_toggle_r
+                      00021 
+000894 0E47           00022         movlw   'G'
+000896 180C           00023         xorwf   SCRATCH0, w
+000898 E023           00024         bz              ui_toggle_g
+                      00025 
+00089A 0E42           00026         movlw   'B'
+00089C 180C           00027         xorwf   SCRATCH0, w
+00089E E022           00028         bz              ui_toggle_b
+                      00029 
+0008A0 0E2B           00030         movlw   '+'
+0008A2 180C           00031         xorwf   SCRATCH0, w
+0008A4 E021           00032         bz              ui_intens_up
+                      00033 
+0008A6 0E2D           00034         movlw   '-'
+0008A8 180C           00035         xorwf   SCRATCH0, w
+0008AA E020           00036         bz              ui_intens_dn
+                      00037 
+0008AC 0E30           00038         movlw   '0'
+0008AE 180C           00039         xorwf   SCRATCH0, w
+0008B0 E01F           00040         bz              ui_set_addr_0
+                      00041 
+0008B2 0E31           00042         movlw   '1'
+0008B4 180C           00043         xorwf   SCRATCH0, w
+0008B6 E01F           00044         bz              ui_set_addr_1
+                      00045 
+0008B8 0E32           00046         movlw   '2'
+0008BA 180C           00047         xorwf   SCRATCH0, w
+0008BC E01F           00048         bz              ui_set_addr_2
+                      00049 
+0008BE 0E41           00050         movlw   'A'
+0008C0 180C           00051         xorwf   SCRATCH0, w
+0008C2 E023           00052         bz              ui_set_addr_x
+                      00053 
+0008C4 0E45           00054         movlw   'E'
+0008C6 180C           00055         xorwf   SCRATCH0, w
+0008C8 E036           00056         bz              ui_set_grp_addr
+                      00057 
+0008CA 0E2A           00058         movlw   '*'
+0008CC 180C           00059         xorwf   SCRATCH0, w
+0008CE E019           00060         bz              ui_inc_addr
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 24
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00061 
+0008D0 0E2F           00062         movlw   '/'
+0008D2 180C           00063         xorwf   SCRATCH0, w
+0008D4 E018           00064         bz              ui_dec_addr
+                      00065 
+0008D6 0012           00066         return
+                      00067 
+                      00068 
+0008D8                00069 ui_inc_color:
+0008D8 2A1C           00070         incf    COLOR
+0008DA 0012           00071         return
+                      00072 
+0008DC                00073 ui_toggle_r:
+0008DC 741C           00074         btg             COLOR, 2
+0008DE 0012           00075         return
+                      00076 
+0008E0                00077 ui_toggle_g:
+0008E0 701C           00078         btg             COLOR, 0
+0008E2 0012           00079         return
+                      00080 
+0008E4                00081 ui_toggle_b:
+0008E4 721C           00082         btg             COLOR, 1
+0008E6 0012           00083         return
+                      00084 
+0008E8                00085 ui_intens_up:
+0008E8 2A1B           00086         incf    INTENS
+0008EA 0012           00087         return
+                      00088 
+0008EC                00089 ui_intens_dn:
+0008EC 061B           00090         decf    INTENS
+0008EE 0012           00091         return
+                      00092 
+0008F0                00093 ui_set_addr_0
+0008F0 0E00           00094         movlw   H'00'
+0008F2 6E1D           00095         movwf   ADDR
+0008F4 0012           00096         return
+                      00097 
+0008F6                00098 ui_set_addr_1
+0008F6 0E01           00099         movlw   H'01'
+0008F8 6E1D           00100         movwf   ADDR
+0008FA 0012           00101         return
+                      00102 
+0008FC                00103 ui_set_addr_2
+0008FC 0E02           00104         movlw   H'02'
+0008FE 6E1D           00105         movwf   ADDR
+000900 0012           00106         return
+                      00107 
+000902                00108 ui_inc_addr:
+000902 2A1D           00109         incf    ADDR
+000904 0012           00110         return
+                      00111 
+000906                00112 ui_dec_addr:
+000906 061D           00113         decf    ADDR
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 25
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000908 0012           00114         return
+                      00115 
+00090A                00116 ui_set_addr_x:
+                      00117         sendstring      str_addr
+00090A 0E00               M         movlw   upper   str_addr
+00090C 6EF8               M         movwf   TBLPTRU
+00090E 0E0A               M         movlw   high    str_addr
+000910 6EF7               M         movwf   TBLPTRH
+000912 0E72               M         movlw   low             str_addr
+000914 6EF6               M         movwf   TBLPTRL
+000916 EC2C F001          M         call    stringsender
+00091A EC28 F003      00118         call    GETCMD
+00091E 6E0A           00119         movwf   SERR01
+000920 EC1C F003      00120         call    SENDCMNDP2              ; local echo
+000924 EC28 F003      00121         call    GETCMD
+000928 6E0B           00122         movwf   SERR02
+00092A EC1C F003      00123         call    SENDCMNDP2              ; local echo
+00092E EC6C F003      00124         call    ASCII2HEX               ; char[2] to byte, in WREG
+000932 6E1D           00125         movwf   ADDR
+000934 0012           00126         return
+                      00127 
+000936                00128 ui_set_grp_addr:
+                      00129         sendstring      str_dest_addr
+000936 0E00               M         movlw   upper   str_dest_addr
+000938 6EF8               M         movwf   TBLPTRU
+00093A 0E0A               M         movlw   high    str_dest_addr
+00093C 6EF7               M         movwf   TBLPTRH
+00093E 0E7A               M         movlw   low             str_dest_addr
+000940 6EF6               M         movwf   TBLPTRL
+000942 EC2C F001          M         call    stringsender
+000946 EC28 F003      00130         call    GETCMD
+00094A 6E0A           00131         movwf   SERR01
+00094C EC1C F003      00132         call    SENDCMNDP2              ; local echo
+000950 EC28 F003      00133         call    GETCMD
+000954 6E0B           00134         movwf   SERR02
+000956 EC1C F003      00135         call    SENDCMNDP2              ; local echo
+00095A EC6C F003      00136         call    ASCII2HEX               ; char[2] to byte, in WREG
+00095E 0B0F           00137         andlw   B'00001111'             ; low nibble only
+000960 0910           00138         iorlw   B'00010000'             ; set Extended Command bit (cmd is 000)
+000962 6E1E           00139         movwf   COMMAND
+000964 ECC5 F004      00140         call    ui_show_packet
+000968 EC10 F004      00141         call    send1wire
+00096C 0012           00142         return
+                      00143 
+                      00144 
+                      00145 ; --------------------------
+                      00146 
+00096E                00147 ui_show_addr:
+                      00148         sendstring      str_addr
+00096E 0E00               M         movlw   upper   str_addr
+000970 6EF8               M         movwf   TBLPTRU
+000972 0E0A               M         movlw   high    str_addr
+000974 6EF7               M         movwf   TBLPTRH
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 26
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000976 0E72               M         movlw   low             str_addr
+000978 6EF6               M         movwf   TBLPTRL
+00097A EC2C F001          M         call    stringsender
+00097E 501D           00149         movf    ADDR, w
+000980 EC4F F003      00150         call    SENDHEX
+000984 EC21 F003      00151         call    SENDCMNDP2CR
+000988 0012           00152         return
+                      00153 
+                      00154 ; --------------------------
+                      00155 
+00098A                00156 ui_show_packet:
+00098A EC21 F003      00157         call    SENDCMNDP2CR
+00098E 501D           00158         movf    ADDR, w
+000990 ECEE F003      00159         call    sendbin
+000994 501E           00160         movf    COMMAND, w
+000996 ECEE F003      00161         call    sendbin
+00099A EC21 F003      00162         call    SENDCMNDP2CR
+00099E 0012           00163         return
+                      00164 
+                      00165 ; --------------------------
+                      00166 
+0009A0                00167 str_menu:
+0009A0 733C 6170 6563 00168         DW      "<space> change color \r\n+       brightness up\r\n-       brightness down\r\nR/G/B   to
+                            ggle color\r\n* and / change addr up or down\r\n\x00"
+       203E 6863 6E61 
+       6567 6320 6C6F 
+       726F 0D20 2B0A 
+       2020 2020 2020 
+       6220 6972 6867 
+       6E74 7365 2073 
+       7075 0A0D 202D 
+       2020 2020 2020 
+       7262 6769 7468 
+       656E 7373 6420 
+       776F 0D6E 520A 
+       472F 422F 2020 
+       7420 676F 6C67 
+       2065 6F63 6F6C 
+       0D72 2A0A 6120 
+       646E 2F2
+000A1E                00169 str_menu_2:
+000A1E 2041 2020 2020 00170         DW      "A              set explicit address\r\nE               set target's group address\r\n\r
+                            \n\x00" 
+       2020 2020 2020 
+       2020 7320 7465 
+       6520 7078 696C 
+       6963 2074 6461 
+       7264 7365 0D73 
+       450A 2020 2020 
+       2020 2020 2020 
+       2020 2020 7320 
+       7465 7420 7261 
+       6567 2774 2073 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 27
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+       7267 756F 2070 
+       6461 7264 7365 
+       0D73 0D0A 000A 
+                      00171 
+000A72                00172 str_addr:
+000A72 6441 7264 203A 00173         DW      "Addr: \x00"
+       0000 
+                      00174 
+000A7A                00175 str_dest_addr:
+000A7A 7247 756F 2070 00176         DW      "Group addr: \x00"
+       6461 7264 203A 
+       0000 
+                      00230 #include        "chain.inc"
+                      00001 
+                      00002 
+                      00003 ; Node color table in memory:
+                      00004 ;    [ADDR] [REDI] [GREENI] [BLUEI]
+                      00005 
+                      00006 
+                      00007 ; FSR1: Color table ptr
+                      00008 
+                      00009 ; TBLPTRx: Random table ptr
+                      00010 
+000A88                00011 chain:
+000A88                00012 chain_init:
+000A88 EE10 F01F      00013         lfsr    FSR1, ADDRTBL   ; point to start of address table
+000A8C 0E00           00014         movlw   UPPER   str_chain       ; point to start of address chain in ROM
+000A8E 6EF8           00015         movwf   TBLPTRU                         ; ...
+000A90 0E0C           00016         movlw   HIGH    str_chain
+000A92 6EF7           00017         movwf   TBLPTRH
+000A94 0EB0           00018         movlw   LOW             str_chain
+000A96 6EF6           00019         movwf   TBLPTRL
+                      00020 
+000A98                00021 chain_init_2:
+000A98 0009           00022         TBLRD*+                                         ; load address and post-increment
+000A9A CFF5 FFE6      00023         movff   TABLAT, POSTINC1        ; store address
+000A9E 6AE6           00024         clrf    POSTINC1                        ; and clear 3 intensity bytes that follow
+000AA0 6AE6           00025         clrf    POSTINC1                        ; ...
+000AA2 6AE6           00026         clrf    POSTINC1                        ;
+                      00027 
+000AA4 66F5           00028         tstfsz  TABLAT                          ; address byte from chain zero?
+000AA6 EF4C F005      00029         goto    chain_init_2            ; if no - more addresses to read, keep reading  
+                      00030 
+000AAA                00031 chain_init_3:
+000AAA 0E00           00032         movlw   UPPER   str_rand        ; point to start of random number table
+000AAC 6EF8           00033         movwf   TBLPTRU                         ; ...
+000AAE 0E0B           00034         movlw   HIGH    str_rand
+000AB0 6EF7           00035         movwf   TBLPTRH
+000AB2 0E32           00036         movlw   LOW             str_rand
+000AB4 6EF6           00037         movwf   TBLPTRL
+                      00038 
+000AB6 EE10 F01F      00039         lfsr    FSR1, ADDRTBL   ; point to start of address table
+                      00040 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 28
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000ABA                00041 chain_loop:
+000ABA EC61 F005      00042         call    fade
+000ABE EF5D F005      00043         goto    chain_loop
+                      00044 
+                      00045 
+                      00046 ; -----------
+                      00047 ; Given an address, color(s) and target intensity, fade from current intensity to that one
+                      00048 
+000AC2                00049 fade:
+                      00050 ;       movlw B'11111100'               ; 
+                      00051 ;       andwf   FSR1L                   ; Point to 1st (address) byte of 4-byte table entry
+000AC2 CFE6 F01D      00052         movff   POSTINC1, ADDR
+000AC6 0E00           00053         movlw   H'00'                   ;
+000AC8 181D           00054         xorwf   ADDR, w                 ; 'ADDR' 0? (end of table)
+000ACA E104           00055         bnz             fade_red                ; if no
+                      00056 
+000ACC EE10 F01F      00057         lfsr    FSR1, ADDRTBL   ; if yes - Reset to start of table
+000AD0 CFE6 F01D      00058         movff   POSTINC1, ADDR  ; and load address
+                      00059 
+000AD4                00060 fade_red:
+000AD4 0E04           00061         movlw   B'00000100'
+000AD6 6E1C           00062         movwf   COLOR
+000AD8 EC77 F005      00063         call    fader
+000ADC                00064 fade_green:
+000ADC 0E02           00065         movlw   B'00000010'
+000ADE 6E1C           00066         movwf   COLOR
+000AE0 EC77 F005      00067         call    fader
+000AE4                00068 fade_blue:
+000AE4 0E01           00069         movlw   B'00000001'
+000AE6 6E1C           00070         movwf   COLOR
+000AE8 EC77 F005      00071         call    fader
+                      00072 
+000AEC 0012           00073         return
+                      00074 
+                      00075 
+                      00076 
+000AEE                00077 fader:
+000AEE CFE7 F00D      00078         movff   INDF1, SCRATCH1
+000AF2 C00D F01B      00079         movff   SCRATCH1, INTENS
+                      00080 ;       movff   SCRATCH1, SCRATCH2
+                      00081 ;       movf    SCRATCH1, w
+000AF6 2AF6           00082         incf    TBLPTRL
+000AF8 0008           00083         TBLRD*
+000AFA 50F5           00084         movf    TABLAT, w
+                      00085 
+000AFC 0B0F           00086         andlw   B'00001111'                     ; constrain intensity
+                      00087 
+                      00088 
+000AFE 6E0E           00089         movwf   SCRATCH2                        ; new intensity
+000B00 5C0D           00090         subwf   SCRATCH1, w                     ; w = SCRATCH1 - SCRATCH2 = old - new
+000B02 E013           00091         bz              fade_done
+000B04 E309           00092         bnc             fade_up                         ; if neg (new intensity greater)
+                      00093 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 29
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000B06                00094 fade_down:
+000B06 061B           00095         decf    INTENS
+000B08 ECC1 F001      00096         call    sendcmdbyte
+                      00097 ;       call    delaysec
+000B0C 501B           00098         movf    INTENS, w
+000B0E 620E           00099         cpfseq  SCRATCH2                        ; INTENS = desired value?
+000B10 EF83 F005      00100         goto    fade_down
+000B14 EF95 F005      00101         goto    fade_done
+                      00102 
+                      00103 
+                      00104 
+000B18                00105 fade_up:
+000B18 2A1B           00106         incf    INTENS
+000B1A ECC1 F001      00107         call    sendcmdbyte
+                      00108 ;       call    delaysec
+000B1E 501B           00109         movf    INTENS, w
+000B20 620E           00110         cpfseq  SCRATCH2                        ; INTENS = desired value?
+000B22 EF8C F005      00111         goto    fade_up
+000B26 EF95 F005      00112         goto    fade_done
+                      00113 
+000B2A                00114 fade_done:
+000B2A C01B FFE7      00115         movff   INTENS, INDF1
+000B2E 50E6           00116         movf    POSTINC1, w                     ; dummy increment
+000B30 0012           00117         return
+                      00231 #include        "rand.inc"
+                      00001 ; $Id: $
+                      00002 
+                      00003 ; Random colors table generated by rand.pl
+                      00004 
+000B32                00005 str_rand:
+000B32 0801           00006         DW H'0801'
+000B34 0004           00007         DW H'0004'
+000B36 0406           00008         DW H'0406'
+000B38 0800           00009         DW H'0800'
+000B3A 0002           00010         DW H'0002'
+000B3C 0002           00011         DW H'0002'
+000B3E 0201           00012         DW H'0201'
+000B40 0001           00013         DW H'0001'
+000B42 0507           00014         DW H'0507'
+000B44 0100           00015         DW H'0100'
+000B46 0103           00016         DW H'0103'
+000B48 0002           00017         DW H'0002'
+000B4A 0102           00018         DW H'0102'
+000B4C 0001           00019         DW H'0001'
+000B4E 0103           00020         DW H'0103'
+000B50 0600           00021         DW H'0600'
+000B52 0005           00022         DW H'0005'
+000B54 0204           00023         DW H'0204'
+000B56 0400           00024         DW H'0400'
+000B58 0301           00025         DW H'0301'
+000B5A 0008           00026         DW H'0008'
+000B5C 0607           00027         DW H'0607'
+000B5E 0706           00028         DW H'0706'
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 30
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000B60 0500           00029         DW H'0500'
+000B62 0400           00030         DW H'0400'
+000B64 0300           00031         DW H'0300'
+000B66 0004           00032         DW H'0004'
+000B68 0701           00033         DW H'0701'
+000B6A 0201           00034         DW H'0201'
+000B6C 0700           00035         DW H'0700'
+000B6E 0606           00036         DW H'0606'
+000B70 0307           00037         DW H'0307'
+000B72 0302           00038         DW H'0302'
+000B74 0000           00039         DW H'0000'
+000B76 0004           00040         DW H'0004'
+000B78 0601           00041         DW H'0601'
+000B7A 0000           00042         DW H'0000'
+000B7C 0000           00043         DW H'0000'
+000B7E 0005           00044         DW H'0005'
+000B80 0300           00045         DW H'0300'
+000B82 0600           00046         DW H'0600'
+000B84 0303           00047         DW H'0303'
+000B86 0500           00048         DW H'0500'
+000B88 0702           00049         DW H'0702'
+000B8A 0003           00050         DW H'0003'
+000B8C 0806           00051         DW H'0806'
+000B8E 0500           00052         DW H'0500'
+000B90 0500           00053         DW H'0500'
+000B92 0100           00054         DW H'0100'
+000B94 0400           00055         DW H'0400'
+000B96 0001           00056         DW H'0001'
+000B98 0008           00057         DW H'0008'
+000B9A 0206           00058         DW H'0206'
+000B9C 0007           00059         DW H'0007'
+000B9E 0303           00060         DW H'0303'
+000BA0 0800           00061         DW H'0800'
+000BA2 0000           00062         DW H'0000'
+000BA4 0100           00063         DW H'0100'
+000BA6 0103           00064         DW H'0103'
+000BA8 0000           00065         DW H'0000'
+000BAA 0000           00066         DW H'0000'
+000BAC 0708           00067         DW H'0708'
+000BAE 0805           00068         DW H'0805'
+000BB0 0105           00069         DW H'0105'
+000BB2 0700           00070         DW H'0700'
+000BB4 0000           00071         DW H'0000'
+000BB6 0703           00072         DW H'0703'
+000BB8 0600           00073         DW H'0600'
+000BBA 0603           00074         DW H'0603'
+000BBC 0800           00075         DW H'0800'
+000BBE 0303           00076         DW H'0303'
+000BC0 0002           00077         DW H'0002'
+000BC2 0800           00078         DW H'0800'
+000BC4 0102           00079         DW H'0102'
+000BC6 0500           00080         DW H'0500'
+000BC8 0802           00081         DW H'0802'
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 31
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000BCA 0403           00082         DW H'0403'
+000BCC 0000           00083         DW H'0000'
+000BCE 0007           00084         DW H'0007'
+000BD0 0007           00085         DW H'0007'
+000BD2 0101           00086         DW H'0101'
+000BD4 0704           00087         DW H'0704'
+000BD6 0200           00088         DW H'0200'
+000BD8 0001           00089         DW H'0001'
+000BDA 0003           00090         DW H'0003'
+000BDC 0000           00091         DW H'0000'
+000BDE 0302           00092         DW H'0302'
+000BE0 0603           00093         DW H'0603'
+000BE2 0002           00094         DW H'0002'
+000BE4 0008           00095         DW H'0008'
+000BE6 0306           00096         DW H'0306'
+000BE8 0700           00097         DW H'0700'
+000BEA 0300           00098         DW H'0300'
+000BEC 0106           00099         DW H'0106'
+000BEE 0104           00100         DW H'0104'
+000BF0 0100           00101         DW H'0100'
+000BF2 0103           00102         DW H'0103'
+000BF4 0208           00103         DW H'0208'
+000BF6 0000           00104         DW H'0000'
+000BF8 0104           00105         DW H'0104'
+000BFA 0502           00106         DW H'0502'
+000BFC 0800           00107         DW H'0800'
+000BFE 0207           00108         DW H'0207'
+000C00 0002           00109         DW H'0002'
+000C02 0302           00110         DW H'0302'
+000C04 0000           00111         DW H'0000'
+000C06 0408           00112         DW H'0408'
+000C08 0607           00113         DW H'0607'
+000C0A 0103           00114         DW H'0103'
+000C0C 0401           00115         DW H'0401'
+000C0E 0000           00116         DW H'0000'
+000C10 0502           00117         DW H'0502'
+000C12 0707           00118         DW H'0707'
+000C14 0507           00119         DW H'0507'
+000C16 0002           00120         DW H'0002'
+000C18 0701           00121         DW H'0701'
+000C1A 0000           00122         DW H'0000'
+000C1C 0804           00123         DW H'0804'
+000C1E 0006           00124         DW H'0006'
+000C20 0505           00125         DW H'0505'
+000C22 0600           00126         DW H'0600'
+000C24 0100           00127         DW H'0100'
+000C26 0305           00128         DW H'0305'
+000C28 0008           00129         DW H'0008'
+000C2A 0503           00130         DW H'0503'
+000C2C 0301           00131         DW H'0301'
+000C2E 0402           00132         DW H'0402'
+000C30 0101           00133         DW H'0101'
+                      00134 
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 32
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00135 ; Total 128 lines
+                      00136 ; (256 bytes)
+                      00232 
+000C32                00233 str_ready:
+000C32 4924 3A64 6D20 00234         DW      "$Id: main.asm,v I don't know, CVS server is broken... $\r\n\x00"
+       6961 2E6E 7361 
+       2C6D 2076 2049 
+       6F64 276E 2074 
+       6E6B 776F 202C 
+       5643 2053 6573 
+       7672 7265 6920 
+       2073 7262 6B6F 
+       6E65 2E2E 202E 
+       0D24 000A 
+                      00235 
+000C6C                00236 str_main_ver:
+000C6C 4924 3A64 6D20 00237         DW      "$Id: main.asm,v 1.2 2005/07/31 21:31:31 tgipson Exp $\r\n\x00"
+       6961 2E6E 7361 
+       2C6D 2076 2E31 
+       2032 3032 3530 
+       302F 2F37 3133 
+       3220 3A31 3133 
+       333A 2031 6774 
+       7069 6F73 206E 
+       7845 2070 0D24 
+       000A 
+                      00238 
+                      00239 
+000CA4                00240 str_sent_cmd:
+000CA4 6D43 2064 6573 00241         DW      "Cmd sent: \x00"
+       746E 203A 0000 
+                      00242 
+                      00243 
+000CB0                00244 str_chain:
+000CB0 1210 1513 1614 00245         DW      "\x10\x12\x13\x15\x14\x16\x17\x00"
+       0017 
+                      00246 
+                      00247         end
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+A                                 00000000
+ABDEN                             00000000
+ABDOVF                            00000007
+ACCEL_PWR                         00000001
+ACCEL_X                           00000000
+ACCESS                            00000000
+ACKDT                             00000005
+ACKEN                             00000004
+ACKSTAT                           00000006
+ACQT0                             00000003
+ACQT1                             00000004
+ACQT2                             00000005
+ACTVIE                            00000002
+ACTVIF                            00000002
+ADC0                              00000015
+ADC1                              00000014
+ADC2                              00000013
+ADC3                              00000012
+ADCON0                            00000FC2
+ADCON1                            00000FC1
+ADCON2                            00000FC0
+ADCS0                             00000000
+ADCS1                             00000001
+ADCS2                             00000002
+ADDEN                             00000003
+ADDR                              0000001D
+ADDR0                             00000000
+ADDR1                             00000001
+ADDR2                             00000002
+ADDR3                             00000003
+ADDR4                             00000004
+ADDR5                             00000005
+ADDR6                             00000006
+ADDRTBL                           0000001F
+ADEN                              00000003
+ADFM                              00000007
+ADIE                              00000006
+ADIF                              00000006
+ADIP                              00000006
+ADON                              00000000
+ADRES                             00000FC3
+ADRESH                            00000FC4
+ADRESL                            00000FC3
+AN0                               00000000
+AN1                               00000001
+AN2                               00000002
+AN3                               00000003
+AN4                               00000005
+ANALOGH                           00000016
+ANALOGL                           00000017
+ASCALPHA1                         000006E8
+ASCALPHA2                         00000710
+ASCDIGIT1                         000006F2
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ASCDIGIT2                         0000071C
+ASCII2HEX                         000006D8
+BANKED                            00000001
+BAUDCON                           00000FB8
+BCLIE                             00000003
+BCLIF                             00000003
+BCLIP                             00000003
+BF                                00000000
+BGST                              00000005
+BOR                               00000000
+BRG16                             00000003
+BRGH                              00000002
+BSR                               00000FE0
+BTOEE                             00000004
+BTOEF                             00000004
+BTSEE                             00000007
+BTSEF                             00000007
+C                                 00000000
+C1INV                             00000004
+C1OUT                             00000006
+C2INV                             00000005
+C2OUT                             00000007
+CCP1                              00000002
+CCP1AS                            00000FB6
+CCP1CON                           00000FBD
+CCP1DEL                           00000FB7
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1IP                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP2CON                           00000FBA
+CCP2IE                            00000000
+CCP2IF                            00000000
+CCP2IP                            00000000
+CCP2M0                            00000000
+CCP2M1                            00000001
+CCP2M2                            00000002
+CCP2M3                            00000003
+CCPR1                             00000FBE
+CCPR1H                            00000FBF
+CCPR1L                            00000FBE
+CCPR2                             00000FBB
+CCPR2H                            00000FBC
+CCPR2L                            00000FBB
+CFGS                              00000006
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CHS3                              00000005
+CIS                               00000003
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 35
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CK                                00000006
+CK1SPP                            00000000
+CK2SPP                            00000001
+CKE                               00000006
+CKP                               00000004
+CLK1EN                            00000004
+CLKCFG0                           00000006
+CLKCFG1                           00000007
+CM0                               00000000
+CM1                               00000001
+CM2                               00000002
+CMCON                             00000FB4
+CMIE                              00000006
+CMIF                              00000006
+CMIP                              00000006
+COLOR                             0000001C
+COMMAND                           0000001E
+CRC16EE                           00000002
+CRC16EF                           00000002
+CRC5EE                            00000001
+CRC5EF                            00000001
+CREN                              00000004
+CSEN                              00000005
+CSRC                              00000007
+CVR0                              00000000
+CVR1                              00000001
+CVR2                              00000002
+CVR3                              00000003
+CVRCON                            00000FB5
+CVREF                             00000004
+CVREN                             00000007
+CVROE                             00000006
+CVRR                              00000005
+CVRSS                             00000004
+D                                 00000005
+DATA_ADDRESS                      00000005
+DC                                00000001
+DC1B0                             00000004
+DC1B1                             00000005
+DC2B0                             00000004
+DC2B1                             00000005
+DDRA                              TRISA
+DDRB                              TRISB
+DDRC                              TRISC
+DDRD                              TRISD
+DDRE                              TRISE
+DFN8EE                            00000003
+DFN8EF                            00000003
+DIR                               00000002
+DONE                              00000001
+DONENIB                           00000728
+D_A                               00000005
+ECCP1AS                           00000FB6
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ECCP1CON                          00000FBD
+ECCP1DEL                          00000FB7
+ECCPAS0                           00000004
+ECCPAS1                           00000005
+ECCPAS2                           00000006
+ECCPASE                           00000007
+EEADDRH                           00000018
+EEADDRL                           00000019
+EEADR                             00000FA9
+EECON1                            00000FA6
+EECON2                            00000FA7
+EEDATA                            00000FA8
+EEIE                              00000004
+EEIF                              00000004
+EEIP                              00000004
+EEPGD                             00000007
+ENDP0                             00000003
+ENDP1                             00000004
+ENDP2                             00000005
+ENDP3                             00000006
+EPCONDIS                          00000003
+EPHSHK                            00000004
+EPINEN                            00000001
+EPOUTEN                           00000002
+EPSTALL                           00000000
+FAST                              00000001
+FERR                              00000002
+FLTS                              00000002
+FREE                              00000004
+FSEN                              00000002
+FSR0                              00000000
+FSR0H                             00000FEA
+FSR0L                             00000FE9
+FSR1                              00000001
+FSR1H                             00000FE2
+FSR1L                             00000FE1
+FSR2                              00000002
+FSR2H                             00000FDA
+FSR2L                             00000FD9
+GCEN                              00000007
+GETCMD                            00000650
+GIE                               00000007
+GIEH                              00000007
+GIEL                              00000006
+GO                                00000001
+GO_DONE                           00000001
+HEXCONV                           00000006
+HEXCONV1                          00000007
+HEXTEMP                           00000008
+HEXTEMP1                          00000009
+HLVDCON                           00000FD2
+HLVDEN                            00000004
+HLVDIE                            00000002
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 37
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+HLVDIF                            00000002
+HLVDIN                            00000005
+HLVDIP                            00000002
+HLVDL0                            00000000
+HLVDL1                            00000001
+HLVDL2                            00000002
+HLVDL3                            00000003
+I2C_DAT                           00000005
+I2C_READ                          00000002
+I2C_START                         00000003
+I2C_STOP                          00000004
+IDLEIE                            00000004
+IDLEIF                            00000004
+IDLEN                             00000007
+INDF0                             00000FEF
+INDF1                             00000FE7
+INDF2                             00000FDF
+INITUSART                         00000610
+INT0                              00000000
+INT0E                             00000004
+INT0F                             00000001
+INT0IE                            00000004
+INT0IF                            00000001
+INT1                              00000001
+INT1E                             00000003
+INT1F                             00000000
+INT1IE                            00000003
+INT1IF                            00000000
+INT1IP                            00000006
+INT1P                             00000006
+INT2                              00000002
+INT2E                             00000004
+INT2F                             00000001
+INT2IE                            00000004
+INT2IF                            00000001
+INT2IP                            00000007
+INT2P                             00000007
+INTCON                            00000FF2
+INTCON2                           00000FF1
+INTCON3                           00000FF0
+INTEDG0                           00000006
+INTEDG1                           00000005
+INTEDG2                           00000004
+INTENS                            0000001B
+INTSRC                            00000008
+IOFS                              00000002
+IPEN                              00000007
+IPR1                              00000F9F
+IPR2                              00000FA2
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRVST                             00000005
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 38
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ISCMD                             0000065A
+IVRST                             00000005
+LATA                              00000F89
+LATA0                             00000000
+LATA1                             00000001
+LATA2                             00000002
+LATA3                             00000003
+LATA4                             00000004
+LATA5                             00000005
+LATA6                             00000006
+LATB                              00000F8A
+LATB0                             00000000
+LATB1                             00000001
+LATB2                             00000002
+LATB3                             00000003
+LATB4                             00000004
+LATB5                             00000005
+LATB6                             00000006
+LATB7                             00000007
+LATC                              00000F8B
+LATC0                             00000000
+LATC1                             00000001
+LATC2                             00000002
+LATC6                             00000006
+LATC7                             00000007
+LATD                              00000F8C
+LATD0                             00000000
+LATD1                             00000001
+LATD2                             00000002
+LATD3                             00000003
+LATD4                             00000004
+LATD5                             00000005
+LATD6                             00000006
+LATD7                             00000007
+LATE                              00000F8D
+LATE0                             00000000
+LATE1                             00000001
+LATE2                             00000002
+LVDCON                            00000FD2
+LVDEN                             00000004
+LVDIE                             00000002
+LVDIF                             00000002
+LVDIN                             00000005
+LVDIP                             00000002
+LVDL0                             00000000
+LVDL1                             00000001
+LVDL2                             00000002
+LVDL3                             00000003
+LVV0                              00000000
+LVV1                              00000001
+LVV2                              00000002
+LVV3                              00000003
+N                                 00000004
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 39
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+NEXTNIB                           000006FC
+NOT_A                             00000005
+NOT_ADDRESS                       00000005
+NOT_BOR                           00000000
+NOT_DONE                          00000001
+NOT_IPEN                          00000007
+NOT_PD                            00000002
+NOT_POR                           00000001
+NOT_RBPU                          00000007
+NOT_RI                            00000004
+NOT_T1SYNC                        00000002
+NOT_T3SYNC                        00000002
+NOT_TO                            00000003
+NOT_W                             00000002
+NOT_WRITE                         00000002
+OERR                              00000001
+OESPP                             00000002
+OSC2                              00000006
+OSCCON                            00000FD3
+OSCFIE                            00000007
+OSCFIF                            00000007
+OSCFIP                            00000007
+OSCTUNE                           00000F9B
+OSTS                              00000003
+OV                                00000003
+P                                 00000004
+P1A                               00000002
+P1M0                              00000006
+P1M1                              00000007
+PC                                00000FF9
+PCFG0                             00000000
+PCFG1                             00000001
+PCFG2                             00000002
+PCFG3                             00000003
+PCL                               00000FF9
+PCLATH                            00000FFA
+PCLATU                            00000FFB
+PD                                00000002
+PDC0                              00000000
+PDC1                              00000001
+PDC2                              00000002
+PDC3                              00000003
+PDC4                              00000004
+PDC5                              00000005
+PDC6                              00000006
+PEIE                              00000006
+PEN                               00000002
+PGC                               00000006
+PGD                               00000007
+PGM                               00000005
+PIDEE                             00000000
+PIDEF                             00000000
+PIE1                              00000F9D
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 40
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PIE2                              00000FA0
+PIR1                              00000F9E
+PIR2                              00000FA1
+PKTDIS                            00000004
+PLUSW0                            00000FEB
+PLUSW1                            00000FE3
+PLUSW2                            00000FDB
+POR                               00000001
+PORTA                             00000F80
+PORTB                             00000F81
+PORTC                             00000F82
+PORTD                             00000F83
+PORTE                             00000F84
+POSTDEC0                          00000FED
+POSTDEC1                          00000FE5
+POSTDEC2                          00000FDD
+POSTINC0                          00000FEE
+POSTINC1                          00000FE6
+POSTINC2                          00000FDE
+PPB0                              00000000
+PPB1                              00000001
+PPBI                              00000001
+PPBRST                            00000006
+PR2                               00000FCB
+PREINC0                           00000FEC
+PREINC1                           00000FE4
+PREINC2                           00000FDC
+PROD                              00000FF3
+PRODH                             00000FF4
+PRODL                             00000FF3
+PRSEN                             00000007
+PSA                               00000003
+PSSAC0                            00000002
+PSSAC1                            00000003
+PSSBD0                            00000000
+PSSBD1                            00000001
+R                                 00000002
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RA6                               00000006
+RB0                               00000000
+RB1                               00000001
+RB2                               00000002
+RB3                               00000003
+RB4                               00000004
+RB5                               00000005
+RB6                               00000006
+RB7                               00000007
+RBIE                              00000003
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 41
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+RBIF                              00000000
+RBIP                              00000000
+RBPU                              00000007
+RC0                               00000000
+RC1                               00000001
+RC2                               00000002
+RC4                               00000004
+RC5                               00000005
+RC6                               00000006
+RC7                               00000007
+RCEN                              00000003
+RCIDL                             00000006
+RCIE                              00000005
+RCIF                              00000005
+RCIP                              00000005
+RCMT                              00000006
+RCON                              00000FD0
+RCREG                             00000FAE
+RCSTA                             00000FAB
+RD                                00000000
+RD0                               00000000
+RD1                               00000001
+RD16                              00000007
+RD2                               00000002
+RD3                               00000003
+RD4                               00000004
+RD5                               00000005
+RD6                               00000006
+RD7                               00000007
+RDPU                              00000007
+RDSPP                             00000007
+RE0                               00000000
+RE1                               00000001
+RE2                               00000002
+RE3                               00000003
+READ_WRITE                        00000002
+RESUME                            00000002
+RI                                00000004
+ROLLOVER                          0000001A
+ROTATE                            00000001
+RSEN                              00000001
+RWDATA                            00000000
+RX                                00000007
+RX9                               00000006
+RX9D                              00000000
+R_W                               00000002
+S                                 00000003
+SBOREN                            00000006
+SCKP                              00000004
+SCRATCH0                          0000000C
+SCRATCH1                          0000000D
+SCRATCH2                          0000000E
+SCRATCH3                          0000000F
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 42
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+SCRATCH4                          00000010
+SCRATCH5                          00000011
+SCS0                              00000000
+SCS1                              00000001
+SDIO                              00000F83
+SDIOTRIS                          00000F95
+SE0                               00000005
+SEN                               00000000
+SENDB                             00000003
+SENDBIN                           000007DC
+SENDCMD                           00000638
+SENDCMNDP2                        00000638
+SENDCMNDP2CR                      00000642
+SENDHEX                           0000069E
+SENDHEXALPHA                      000006C4
+SENDHEXNUM                        000006CE
+SENDNIB                           000006B6
+SERR01                            0000000A
+SERR02                            0000000B
+SMP                               00000007
+SOFIE                             00000006
+SOFIF                             00000006
+SPBRG                             00000FAF
+SPBRGH                            00000FB0
+SPEN                              00000007
+SPP0                              00000000
+SPP1                              00000001
+SPP2                              00000002
+SPP3                              00000003
+SPP4                              00000004
+SPP5                              00000005
+SPP6                              00000006
+SPP7                              00000007
+SPPBUSY                           00000004
+SPPCFG                            00000F63
+SPPCON                            00000F65
+SPPDATA                           00000F62
+SPPEN                             00000000
+SPPEPS                            00000F64
+SPPIE                             00000007
+SPPIF                             00000007
+SPPIP                             00000007
+SPPOWN                            00000001
+SREN                              00000005
+SSPADD                            00000FC8
+SSPBUF                            00000FC9
+SSPCON1                           00000FC6
+SSPCON2                           00000FC5
+SSPEN                             00000005
+SSPIE                             00000003
+SSPIF                             00000003
+SSPIP                             00000003
+SSPM0                             00000000
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 43
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+SSPM1                             00000001
+SSPM2                             00000002
+SSPM3                             00000003
+SSPOV                             00000006
+SSPSTAT                           00000FC7
+STALLIE                           00000005
+STALLIF                           00000005
+STATUS                            00000FD8
+STKFUL                            00000007
+STKPTR                            00000FFC
+STKPTR0                           00000000
+STKPTR1                           00000001
+STKPTR2                           00000002
+STKPTR3                           00000003
+STKPTR4                           00000004
+STKUNF                            00000006
+SUSPND                            00000001
+SWDTE                             00000000
+SWDTEN                            00000000
+SYNC                              00000004
+S_DO                              00000007
+T08BIT                            00000006
+T0CKI                             00000004
+T0CON                             00000FD5
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0IP                              00000002
+T0PS0                             00000000
+T0PS1                             00000001
+T0PS2                             00000002
+T0SE                              00000004
+T13CKI                            00000000
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000FCD
+T1OSCEN                           00000003
+T1OSI                             00000001
+T1OSO                             00000000
+T1RUN                             00000006
+T1SYNC                            00000002
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000FCA
+T2OUTPS0                          00000003
+T2OUTPS1                          00000004
+T2OUTPS2                          00000005
+T2OUTPS3                          00000006
+T3CCP1                            00000003
+T3CCP2                            00000006
+T3CKPS0                           00000004
+T3CKPS1                           00000005
+T3CON                             00000FB1
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 44
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+T3NSYNC                           00000002
+T3SYNC                            00000002
+TABLAT                            00000FF5
+TBLPTR                            00000FF6
+TBLPTRH                           00000FF7
+TBLPTRL                           00000FF6
+TBLPTRU                           00000FF8
+TMR0H                             00000FD7
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR0IP                            00000002
+TMR0L                             00000FD6
+TMR0ON                            00000007
+TMR1CS                            00000001
+TMR1H                             00000FCF
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1IP                            00000000
+TMR1L                             00000FCE
+TMR1ON                            00000000
+TMR2                              00000FCC
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2IP                            00000001
+TMR2ON                            00000002
+TMR3CS                            00000001
+TMR3H                             00000FB3
+TMR3IE                            00000001
+TMR3IF                            00000001
+TMR3IP                            00000001
+TMR3L                             00000FB2
+TMR3ON                            00000000
+TO                                00000003
+TOS                               00000FFD
+TOSH                              00000FFE
+TOSL                              00000FFD
+TOSU                              00000FFF
+TRISA                             00000F92
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRISA6                            00000006
+TRISB                             00000F93
+TRISB0                            00000000
+TRISB1                            00000001
+TRISB2                            00000002
+TRISB3                            00000003
+TRISB4                            00000004
+TRISB5                            00000005
+TRISB6                            00000006
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 45
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TRISB7                            00000007
+TRISC                             00000F94
+TRISC0                            00000000
+TRISC1                            00000001
+TRISC2                            00000002
+TRISC6                            00000006
+TRISC7                            00000007
+TRISD                             00000F95
+TRISD0                            00000000
+TRISD1                            00000001
+TRISD2                            00000002
+TRISD3                            00000003
+TRISD4                            00000004
+TRISD5                            00000005
+TRISD6                            00000006
+TRISD7                            00000007
+TRISE                             00000F96
+TRISE0                            00000000
+TRISE1                            00000001
+TRISE2                            00000002
+TRMT                              00000001
+TRNIE                             00000003
+TRNIF                             00000003
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000004
+TUN4                              00000005
+TX                                00000006
+TX9                               00000006
+TX9D                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXIP                              00000004
+TXREG                             00000FAD
+TXSTA                             00000FAC
+UA                                00000001
+UADDR                             00000F6E
+UCFG                              00000F6F
+UCON                              00000F6D
+UEIE                              00000F6B
+UEIR                              00000F6A
+UEP0                              00000F70
+UEP1                              00000F71
+UEP10                             00000F7A
+UEP11                             00000F7B
+UEP12                             00000F7C
+UEP13                             00000F7D
+UEP14                             00000F7E
+UEP15                             00000F7F
+UEP2                              00000F72
+UEP3                              00000F73
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 46
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+UEP4                              00000F74
+UEP5                              00000F75
+UEP6                              00000F76
+UEP7                              00000F77
+UEP8                              00000F78
+UEP9                              00000F79
+UERRIE                            00000001
+UERRIF                            00000001
+UFRM                              00000F66
+UFRMH                             00000F67
+UFRML                             00000F66
+UIE                               00000F69
+UIR                               00000F68
+UOEMON                            00000006
+UPUEN                             00000004
+URSTIE                            00000000
+URSTIF                            00000000
+USBEN                             00000003
+USBIE                             00000005
+USBIF                             00000005
+USBIP                             00000005
+USTAT                             00000F6C
+UTEYE                             00000007
+UTRDIS                            00000003
+VCFG0                             00000004
+VCFG1                             00000005
+VDIRMAG                           00000007
+VREFM                             00000002
+VREFP                             00000003
+W                                 00000000
+WAITER                            00000005
+WCOL                              00000007
+WDTCON                            00000FD1
+WR                                00000001
+WREG                              00000FE8
+WREN                              00000002
+WRERR                             00000003
+WRSPP                             00000006
+WS0                               00000000
+WS1                               00000001
+WS2                               00000002
+WS3                               00000003
+WUE                               00000001
+Z                                 00000002
+_BORV_21_2L                       000000FF
+_BORV_28_2L                       000000F7
+_BORV_43_2L                       000000EF
+_BORV_46_2L                       000000E7
+_BOR_OFF_2L                       000000F9
+_BOR_ON_2L                        000000FF
+_BOR_ON_ACTIVE_2L                 000000FD
+_BOR_SOFT_2L                      000000FB
+_CCP2MX_OFF_3H                    000000FE
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 47
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_CCP2MX_ON_3H                     000000FF
+_CONFIG1H                         00300001
+_CONFIG1L                         00300000
+_CONFIG2H                         00300003
+_CONFIG2L                         00300002
+_CONFIG3H                         00300005
+_CONFIG4L                         00300006
+_CONFIG5H                         00300009
+_CONFIG5L                         00300008
+_CONFIG6H                         0030000B
+_CONFIG6L                         0030000A
+_CONFIG7H                         0030000D
+_CONFIG7L                         0030000C
+_CP0_OFF_5L                       000000FF
+_CP0_ON_5L                        000000FE
+_CP1_OFF_5L                       000000FF
+_CP1_ON_5L                        000000FD
+_CP2_OFF_5L                       000000FF
+_CP2_ON_5L                        000000FB
+_CP3_OFF_5L                       000000FF
+_CP3_ON_5L                        000000F7
+_CPB_OFF_5H                       000000FF
+_CPB_ON_5H                        000000BF
+_CPD_OFF_5H                       000000FF
+_CPD_ON_5H                        0000007F
+_CPUDIV_OSC1_PLL2_1L              000000E7
+_CPUDIV_OSC2_PLL3_1L              000000EF
+_CPUDIV_OSC3_PLL4_1L              000000F7
+_CPUDIV_OSC4_PLL6_1L              000000FF
+_DEBUG_OFF_4L                     000000FF
+_DEBUG_ON_4L                      0000007F
+_DEVID1                           003FFFFE
+_DEVID2                           003FFFFF
+_EBTR0_OFF_7L                     000000FF
+_EBTR0_ON_7L                      000000FE
+_EBTR1_OFF_7L                     000000FF
+_EBTR1_ON_7L                      000000FD
+_EBTR2_OFF_7L                     000000FF
+_EBTR2_ON_7L                      000000FB
+_EBTR3_OFF_7L                     000000FF
+_EBTR3_ON_7L                      000000F7
+_EBTRB_OFF_7H                     000000FF
+_EBTRB_ON_7H                      000000BF
+_FCMEM_OFF_1H                     000000BF
+_FCMEM_ON_1H                      000000FF
+_FOSC_ECIO_EC_1H                  000000F4
+_FOSC_ECPLLIO_EC_1H               000000F6
+_FOSC_ECPLL_EC_1H                 000000F7
+_FOSC_EC_EC_1H                    000000F5
+_FOSC_HSPLL_HS_1H                 000000FE
+_FOSC_HS_1H                       000000FC
+_FOSC_INTOSCIO_EC_1H              000000F8
+_FOSC_INTOSC_EC_1H                000000F9
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 48
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_FOSC_INTOSC_HS_1H                000000FB
+_FOSC_INTOSC_XT_1H                000000FA
+_FOSC_XTPLL_XT_1H                 000000F2
+_FOSC_XT_XT_1H                    000000F0
+_ICPRT_OFF_4L                     000000DF
+_ICPRT_ON_4L                      000000FF
+_IDLOC0                           00200000
+_IDLOC1                           00200001
+_IDLOC2                           00200002
+_IDLOC3                           00200003
+_IDLOC4                           00200004
+_IDLOC5                           00200005
+_IDLOC6                           00200006
+_IDLOC7                           00200007
+_IESO_OFF_1H                      0000007F
+_IESO_ON_1H                       000000FF
+_LPT1OSC_OFF_3H                   000000FB
+_LPT1OSC_ON_3H                    000000FF
+_LVP_OFF_4L                       000000FB
+_LVP_ON_4L                        000000FF
+_MCLRE_OFF_3H                     0000007F
+_MCLRE_ON_3H                      000000FF
+_PBADEN_OFF_3H                    000000FD
+_PBADEN_ON_3H                     000000FF
+_PLLDIV_10_1L                     000000FE
+_PLLDIV_12_1L                     000000FF
+_PLLDIV_1_1L                      000000F8
+_PLLDIV_2_1L                      000000F9
+_PLLDIV_3_1L                      000000FA
+_PLLDIV_4_1L                      000000FB
+_PLLDIV_5_1L                      000000FC
+_PLLDIV_6_1L                      000000FD
+_PWRT_OFF_2L                      000000FF
+_PWRT_ON_2L                       000000FE
+_STVREN_OFF_4L                    000000FE
+_STVREN_ON_4L                     000000FF
+_USBDIV_1_1L                      000000DF
+_USBDIV_2_1L                      000000FF
+_VREGEN_OFF_2L                    000000DF
+_VREGEN_ON_2L                     000000FF
+_WDTPS_1024_2H                    000000F5
+_WDTPS_128_2H                     000000EF
+_WDTPS_16384_2H                   000000FD
+_WDTPS_16_2H                      000000E9
+_WDTPS_1_2H                       000000E1
+_WDTPS_2048_2H                    000000F7
+_WDTPS_256_2H                     000000F1
+_WDTPS_2_2H                       000000E3
+_WDTPS_32768_2H                   000000FF
+_WDTPS_32_2H                      000000EB
+_WDTPS_4096_2H                    000000F9
+_WDTPS_4_2H                       000000E5
+_WDTPS_512_2H                     000000F3
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 49
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_WDTPS_64_2H                      000000ED
+_WDTPS_8192_2H                    000000FB
+_WDTPS_8_2H                       000000E7
+_WDT_OFF_2H                       000000FE
+_WDT_ON_2H                        000000FF
+_WRT0_OFF_6L                      000000FF
+_WRT0_ON_6L                       000000FE
+_WRT1_OFF_6L                      000000FF
+_WRT1_ON_6L                       000000FD
+_WRT2_OFF_6L                      000000FF
+_WRT2_ON_6L                       000000FB
+_WRT3_OFF_6L                      000000FF
+_WRT3_ON_6L                       000000F7
+_WRTB_OFF_6H                      000000FF
+_WRTB_ON_6H                       000000BF
+_WRTC_OFF_6H                      000000FF
+_WRTC_ON_6H                       000000DF
+_WRTD_OFF_6H                      000000FF
+_WRTD_ON_6H                       0000007F
+_XINST_OFF_4L                     000000BF
+_XINST_ON_4L                      000000FF
+__18F4550                         00000001
+chain                             00000A88
+chain_init                        00000A88
+chain_init_2                      00000A98
+chain_init_3                      00000AAA
+chain_loop                        00000ABA
+colorchg                          00000378
+d1                                00000450
+d2                                0000044C
+d2m1                              0000046C
+d2m2                              00000468
+d3                                00000448
+d4m1                              00000430
+d4m2                              0000042C
+d4m3                              00000428
+del1                              00000004
+del2                              00000003
+del3                              00000002
+delay20_1                         000005B4
+delay20k                          00000464
+delay20msec                       000004FA
+delay20sec                        00000548
+delay40_1                         000005A8
+delay68_1                         000005C0
+delay_20                          000005B0
+delay_40                          000005A4
+delay_68                          000005BC
+delay_dt                          delay_68
+delay_one                         delay_40
+delay_zero                        delay_20
+delayb1                           0000059C
+delayb1_wusb                      000005CC
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 50
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+delaybit                          0000059A
+delaybit_wusb                     000005C8
+delayhalfbit                      000005A4
+delayhmsec                        0000049A
+delayhsome                        000004DA
+delaymsec                         0000047A
+delaymsec4M                       00000424
+delaysec                          00000444
+delaysome                         000004BA
+dhm1                              000004A6
+dhm2                              000004A2
+dhm3                              0000049E
+dhs1                              000004E6
+dhs2                              000004E2
+dhs3                              000004DE
+dm1                               00000486
+dm2                               00000482
+dm3                               0000047E
+ds1                               000004C6
+ds2                               000004C2
+ds3                               000004BE
+fade                              00000AC2
+fade_blue                         00000AE4
+fade_done                         00000B2A
+fade_down                         00000B06
+fade_green                        00000ADC
+fade_red                          00000AD4
+fade_up                           00000B18
+fader                             00000AEE
+filler0                           00000000
+init                              000002A4
+init_int_ADC                      0000081A
+init_ports                        000003D6
+intensloop                        00000354
+intensloop2                       00000368
+intensloop_dn                     0000036C
+intensloop_up                     0000035C
+main                              0000031E
+pstrcpy                           
+read_int_ADC                      000007FA
+read_int_ADC_chan                 000007F6
+read_int_ADC_wait                 000007FC
+rom_to_ram                        0000026C
+rom_to_ram2                       00000278
+send1wire                         00000820
+send1wire2                        00000838
+send1wire_byte                    00000832
+send1wire_start                   00000854
+sendbin                           000007DC
+sendbin1                          000007E2
+sendcmdbyte                       00000382
+sendstrbyte                       00000264
+sendstring                        
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 51
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+set_int_ADC_chan                  0000080C
+start                             0000027E
+stop                              00000398
+str_addr                          00000A72
+str_chain                         00000CB0
+str_defs_ver                      00000732
+str_delay_ver                     000003EA
+str_dest_addr                     00000A7A
+str_hex_ver                       00000662
+str_main_ver                      00000C6C
+str_menu                          000009A0
+str_menu_2                        00000A1E
+str_ports                         0000039C
+str_rand                          00000B32
+str_ready                         00000C32
+str_sendbin_ver                   000007A0
+str_sent_cmd                      00000CA4
+str_string_ver                    0000021C
+str_uart_ver                      000005D4
+str_vars_ver                      0000076A
+stringsender                      00000258
+test_adc                          000002C8
+test_adc_neg                      000002EC
+test_adc_pos                      000002F6
+test_adc_show                     000002FA
+testy                             00000290
+ui_dec_addr                       00000906
+ui_inc_addr                       00000902
+ui_inc_color                      000008D8
+ui_intens_dn                      000008EC
+ui_intens_up                      000008E8
+ui_main_menu                      00000862
+ui_set_addr_0                     000008F0
+ui_set_addr_1                     000008F6
+ui_set_addr_2                     000008FC
+ui_set_addr_x                     0000090A
+ui_set_grp_addr                   00000936
+ui_show_addr                      0000096E
+ui_show_packet                    0000098A
+ui_toggle_b                       000008E4
+ui_toggle_g                       000008E0
+ui_toggle_r                       000008DC
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 52
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+
+0200 : XXXX------------ --------XXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0240 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0280 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+02C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0300 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0340 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0380 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+03C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0400 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0440 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0480 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+04C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0500 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0540 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0580 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+05C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0600 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0640 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0680 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+06C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0700 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0740 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0780 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+07C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0800 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0840 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0880 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+08C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0900 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0940 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0980 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+09C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0A00 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0A40 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0A80 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0AC0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0B00 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0B40 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0B80 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0BC0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0C00 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0C40 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0C80 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXX--------
+
+All other memory blocks unused.
+
+Program Memory Bytes Used:  2724
+Program Memory Bytes Free: 30044
+
+
+MPASM  4.00 Released                                 MAIN.ASM   6-6-2006  19:21:47         PAGE 53
+
+
+
+
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     0 reported,     0 suppressed
+
+

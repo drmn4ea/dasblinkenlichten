@@ -1,4 +1,4 @@
-; $Id: $
+; $Id: main.asm,v 1.1 2007/01/25 16:12:52 tgipson Exp $
 ;
 ; 10F 1-Wire Receiver + Indicator
 
@@ -372,6 +372,9 @@ getbit_ready:
 #include "vars.inc"
 #include "defs.inc"
 
-
+; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
+; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
+str_version:
+	DT	"$Id: main.asm,v 1.1 2007/01/25 16:12:52 tgipson Exp $"
 
 	end
