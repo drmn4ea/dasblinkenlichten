@@ -1,10 +1,10 @@
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  1
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  1
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
-                      00001 ; $Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $
+                      00001 ; $Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $
                       00002 ;
                       00003 ; 10F 1-Wire Receiver + Indicator
                       00004 
@@ -57,7 +57,7 @@ LOC  OBJECT CODE     LINE SOURCE TEXT
 0008   0406           00041         bcf             GPIO, RED
                       00042 
 0009   0072           00043         clrf    PWM_R
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  2
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  2
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
@@ -98,12 +98,12 @@ LOC  OBJECT CODE     LINE SOURCE TEXT
                       00076 
 0020                  00077 main:
 0020   0004           00078         clrwdt
-0021   0985           00079         call    pwm                             ; 25 clocks, including call. 11 inc. call if separated..
+0021   0980           00079         call    pwm                             ; 25 clocks, including call. 11 inc. call if separated..
                             .
 0022   0766           00080         btfss   GPIO, SDI               ; start bit?
 0023   0A20           00081         goto    main
-0024   0A25           00082         goto    getcmd                  ; fake 'call' - shallow stack
-                      00083 
+                      00082 ;       goto    getcmd                  ; fake 'call' - shallow stack
+                      00083                                                         ; Fall through...
                       00084 
                       00085 
                       00086 
@@ -113,369 +113,323 @@ LOC  OBJECT CODE     LINE SOURCE TEXT
                       00090 ; ASSUMPTION: Start condition is long enough that the longest possible complete loop will still get us b
                             ack here in time to catch it.
                       00091 
-0025                  00092 getcmd:
-0025   0C16           00093         movlw   CMDBUF                  ; init buffer ptr
-0026   0024           00094         movwf   FSR                             ;
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  3
+0024                  00092 getcmd:
+0024   0C16           00093         movlw   CMDBUF                  ; init buffer ptr
+0025   0024           00094         movwf   FSR                             ;
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  3
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
                       00095 
-0027                  00096 getstartbit:
-0027   0666           00097         btfsc   GPIO, SDI               ; spinlock until start condition released
-0028   0A27           00098         goto    getstartbit             ; ...
+0026                  00096 getstartbit:
+0026   0666           00097         btfsc   GPIO, SDI               ; spinlock until start condition released
+0027   0A26           00098         goto    getstartbit             ; ...
                       00099 
                       00100 ;       clrwdt
                       00101 
-0029   0960           00102         call    getbyte                 ; addr
-002A   0260           00103         comf    INDF,f  ;hack: bits inverted?
-002B   02A4           00104         incf    FSR,f
-002C   0960           00105         call    getbyte                 ; cmd
-002D   0260           00106         comf    INDF,f  ;hack: bits inverted?
+0028   0951           00102         call    getbyte                 ; addr
+                      00103 ;       comf    INDF,f  ;hack: bits inverted?
+0029   02A4           00104         incf    FSR,f
+002A   0951           00105         call    getbyte                 ; cmd
+                      00106 ;       comf    INDF,f  ;hack: bits inverted?
                       00107 
                       00108 
-                      00109         ; check address
-002E   0C16           00110         movlw   CMDBUF                  ; point to 1st byte of CMDBUF (addr)
-002F   0024           00111         movwf   FSR                             ; ...
+                      00109         ; check address to see if it's anything we respond to...
+002B   0C16           00110         movlw   CMDBUF                  ; point to 1st byte of CMDBUF (addr)
+002C   0024           00111         movwf   FSR                             ; ...
                       00112 
-0030   0C00           00113         movlw   H'00'                   ; General Call addr? (everybody! everybody!)
-0031   0180           00114         xorwf   INDF, w                 ;
-0032   0643           00115         btfsc   STATUS, Z
-0033   0A3D           00116         goto    processcmd
-                      00117 ;       bz              processcmd
+002D   0C00           00113         movlw   H'00'                   ; General Call addr? (everybody! everybody!)
+002E   0180           00114         xorwf   INDF, w                 ;
+002F   0643           00115         btfsc   STATUS, Z
+0030   0A3A           00116         goto    processcmd
+                      00117 
                       00118 
                       00119 
-0034   0C19           00120         movlw   MYADDR                  ; This chip's addr?
-0035   0180           00121         xorwf   INDF, W                 ;
-0036   0643           00122         btfsc   STATUS, Z
-0037   0A3D           00123         goto    processcmd
-                      00124 ;       bz              processcmd
+0031   0C19           00120         movlw   MYADDR                  ; This chip's addr? (NOTE: Hard-coded literal)
+0032   0180           00121         xorwf   INDF, W                 ;
+0033   0643           00122         btfsc   STATUS, Z
+0034   0A3A           00123         goto    processcmd
+                      00124 
                       00125 
-0038   0215           00126         movf    GROUPADDR, w    ; This chip's Group addr?
-0039   0180           00127         xorwf   INDF, W                 ;
-003A   0643           00128         btfsc   STATUS, Z
-003B   0A3D           00129         goto    processcmd
-                      00130 ;       bz              processcmd
-                      00131 
+0035   0215           00126         movf    GROUPADDR, w    ; This chip's Group addr? (NOTE: Variable)
+0036   0180           00127         xorwf   INDF, W                 ;
+0037   0643           00128         btfsc   STATUS, Z
+0038   0A3A           00129         goto    processcmd
+                      00130 
+0039   0A20           00131         goto    main                    ; else - not for us...
                       00132 
-003C   0A20           00133         goto    main                    ; else - not for us...
+003A                  00133 processcmd:
                       00134 
-003D                  00135 processcmd:
-                      00136 
-                      00137 ;       movlw   H'FF'           ; debug
-                      00138 ;       movwf   PWM_B           ; - check for getting here
-                      00139 
-003D   0C17           00140         movlw   CMDBUF+1                ; point to 2nd byte of CMDBUF (cmd)
-003E   0024           00141         movwf   FSR                             ; ...
-                      00142 
-003F   0680           00143         btfsc   INDF, 4                 ; Extended Command bit
-0040   0A48           00144         goto    extcmd
-                      00145 
-0041   06E0           00146         btfsc   INDF, 7                 ; R cmd
-0042   0954           00147         call    processcmd_r
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  4
+                      00135 ;       movlw   H'FF'           ; debug
+                      00136 ;       movwf   PWM_B           ; - check for getting here
+                      00137 
+003A   0C17           00138         movlw   CMDBUF+1                ; point to 2nd byte of CMDBUF (cmd)
+003B   0024           00139         movwf   FSR                             ; ...
+                      00140 
+003C   0680           00141         btfsc   INDF, 4                 ; Extended Command bit
+003D   0A45           00142         goto    extcmd
+                      00143 
+003E   06E0           00144         btfsc   INDF, 7                 ; R cmd
+003F   0960           00145         call    processcmd_r
+0040   06C0           00146         btfsc   INDF, 6                 ; G cmd
+0041   0964           00147         call    processcmd_g
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  4
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
-0043   06C0           00148         btfsc   INDF, 6                 ; G cmd
-0044   0958           00149         call    processcmd_g
-0045   06A0           00150         btfsc   INDF, 5                 ; B cmd
-0046   095C           00151         call    processcmd_b
-0047   0A20           00152         goto    main                    ; done
-                      00153 
-                      00154 
-0048                  00155 extcmd:                                         ; Extended commands are handled here
-                      00156 ;       movlw   b'11111110'             ; debug
-                      00157 ;       movwf   PWM_R                   ; debug
-                      00158 
-0048   0200           00159         movf    INDF, w                 ; Decode cmd to SCRATCH0
-0049   0EE0           00160         andlw   B'11100000'             ; ...
-004A   0030           00161         movwf   SCRATCH0                ;
-                      00162 
-004B   0C00           00163         movlw   H'00'
-004C   0190           00164         xorwf   SCRATCH0, w
-004D   0643           00165         btfsc   STATUS, Z
-004E   0A50           00166         goto    setgroup
-                      00167 ;       movlw   b'11111110'             ; debug
-                      00168 ;       movwf   PWM_G                   ; debug
-                      00169         ; ... other extended commands here ...
+0042   06A0           00148         btfsc   INDF, 5                 ; B cmd
+0043   0968           00149         call    processcmd_b
+0044   0A20           00150         goto    main                    ; done
+                      00151 
+                      00152 
+0045                  00153 extcmd:                                         ; Extended commands are handled here
+                      00154 ;       movlw   b'11111110'             ; debug
+                      00155 ;       movwf   PWM_R                   ; debug
+                      00156 
+0045   0200           00157         movf    INDF, w                 ; Decode cmd to SCRATCH0
+0046   0EE0           00158         andlw   B'11100000'             ; ...
+0047   0030           00159         movwf   SCRATCH0                ;
+                      00160 
+0048   0C00           00161         movlw   H'00'
+0049   0190           00162         xorwf   SCRATCH0, w
+004A   0643           00163         btfsc   STATUS, Z
+004B   0A4D           00164         goto    setgroup
+                      00165 ;       movlw   b'11111110'             ; debug
+                      00166 ;       movwf   PWM_G                   ; debug
+                      00167         ; ... other extended commands here ...
+                      00168 
+004C   0A20           00169         goto    main
                       00170 
-004F   0A20           00171         goto    main
+                      00171 
                       00172 
-                      00173 
-                      00174 
-0050                  00175 setgroup:
-0050   0200           00176         movf    INDF, w
-0051   0E0F           00177         andlw   B'00001111'
-0052   0035           00178         movwf   GROUPADDR               ; store low nibble of extended cmd as group address
-                      00179 ;       movlw   b'11111110'             ; debug
-                      00180 ;       movwf   PWM_B                   ; debug
-0053   0A20           00181         goto    main
+004D                  00173 setgroup:
+004D   0200           00174         movf    INDF, w
+004E   0E0F           00175         andlw   B'00001111'
+004F   0035           00176         movwf   GROUPADDR               ; store low nibble of extended cmd as group address
+                      00177 ;       movlw   b'11111110'             ; debug
+                      00178 ;       movwf   PWM_B                   ; debug
+0050   0A20           00179         goto    main
+                      00180 
+                      00181 
                       00182 
-                      00183 ; ---------------------------------------------------
-                      00184 ; Process command byte in buffer for the given color
-                      00185 
-                      00186 ;processcmd_r:
-                      00187 ;       call    setpwm
-                      00188 ;       movf    SCRATCH0, w
-                      00189 ;       movwf   PWM_R
-                      00190 ;       retlw   0
-                      00191 ;
-                      00192 ;processcmd_g:
-                      00193 ;       call    setpwm
-                      00194 ;       movf    SCRATCH0, w
-                      00195 ;       movwf   PWM_G
-                      00196 ;       retlw   0
-                      00197 ;
-                      00198 ;processcmd_b:
-                      00199 ;       call    setpwm
-                      00200 ;       movf    SCRATCH0, w
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  5
+                      00183 ; -------------------------------
+                      00184 ; Receive a complete byte (sans start condition) from the 1-wire bus.
+                      00185 ; When we've gotten here, start condition already set and just released.
+                      00186 
+0051                  00187 getbyte:
+0051   0C08           00188         movlw   H'08'                           ; rotate this many times
+0052   0031           00189         movwf   COUNT                           ;
+                      00190 
+0053                  00191 getbit_firsthalf:
+0053   0061           00192         clrf    TMR0                            ; begin timing low half of bit
+                      00193 ; FIXME: temporarily removed for testing
+                      00194 ;       call    pwm                                     ; ONCE, in dead time. xxx clocks, including call
+                            ; +xxx after bit received
+0054                  00195 getbit_firsthalf_end:
+0054   0766           00196         btfss   GPIO, SDI                       ; wait for SDI to go high - has it?
+0055   0A54           00197         goto    getbit_firsthalf_end; if no
+                      00198 
+0056   0261           00199         comf    TMR0, f                         ; if yes - begin timing high half of bit
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  5
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
-                      00201 ;       movwf   PWM_B
-                      00202 ;       retlw   0
-                      00203 
-                      00204 ; New: 'setpwm' returns the value in WREG directly.
-0054                  00205 processcmd_r:
-0054   0971           00206         call    setpwm
-                      00207         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
-0055   0FFF           00208         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
+                      00200 
+0057                  00201 getbit_secondhalf:
+0057   0666           00202         btfsc   GPIO, SDI                       ; now waiting for bit to go low again - has it?
+0058   0A57           00203         goto    getbit_secondhalf       ; if no
+                      00204 
+0059   0201           00205         movf    TMR0, w                         ; get timer's value
+005A   0030           00206         movwf   SCRATCH0                        ; .. to scratch reg (ghetto chip doesn't allow operation
+                             on WREG..?)
+005B   0370           00207         rlf             SCRATCH0,f                      ; rotate MSB of TMR0 into 'C'arry (don't care ab
+                            out other bits)
+005C   0360           00208         rlf             INDF,f                          ; shift bit in 'C'arry into currently-addressed 
+                            buffer position
+005D   02F1           00209         decfsz  COUNT,f                         ; got all bits?
+005E   0A53           00210         goto    getbit_firsthalf        ; if no - wait for next
+005F   0800           00211         retlw   0                                       ; else - done
+                      00212 
+                      00213 
+                      00214 ; ---------------------------------------------------
+                      00215 ; Process command byte in buffer for the given color
+                      00216 
+0060                  00217 processcmd_r:
+0060   096C           00218         call    setpwm
+                      00219         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
+0061   0FFF           00220         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
                             LED is lit)
-                      00209         #endif
-0056   0032           00210         movwf   PWM_R
-0057   0800           00211         retlw   0
-0058                  00212 processcmd_g:
-0058   0971           00213         call    setpwm
-                      00214         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
-0059   0FFF           00215         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
+                      00221         #endif
+0062   0032           00222         movwf   PWM_R
+0063   0800           00223         retlw   0
+0064                  00224 processcmd_g:
+0064   096C           00225         call    setpwm
+                      00226         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
+0065   0FFF           00227         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
                             LED is lit)
-                      00216         #endif
-005A   0033           00217         movwf   PWM_G
-005B   0800           00218         retlw   0
-005C                  00219 processcmd_b:
-005C   0971           00220         call    setpwm
-                      00221         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
-005D   0FFF           00222         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
+                      00228         #endif
+0066   0033           00229         movwf   PWM_G
+0067   0800           00230         retlw   0
+0068                  00231 processcmd_b:
+0068   096C           00232         call    setpwm
+                      00233         #if (COMM_ANODE == 1)           ; Switched in for common-anode drive
+0069   0FFF           00234         xorlw   B'11111111'                     ; complement WREG directly (comm. anode: line LOW means 
                             LED is lit)
-                      00223         #endif
-005E   0034           00224         movwf   PWM_B
-005F   0800           00225         retlw   0
-                      00226 ; -------------------------------
-                      00227 
-                      00228 
-0060                  00229 getbyte:
-0060   0C08           00230         movlw   H'08'                   ; rotate this many times
-0061   0031           00231         movwf   COUNT                   ;
-                      00232 
-                      00233 
-0062                  00234 getbit_waiting:
-0062   0985           00235         call    pwm                             ; ONCE, in dead time. 25 clocks, including call; +10 aft
-                            er bit received
-0063                  00236 getbit_donewaiting:
-0063   0766           00237         btfss   GPIO, SDI                       ; wait for SDI to go high - has it?
-0064   0A63           00238         goto    getbit_donewaiting      ; if no
+                      00235         #endif
+006A   0034           00236         movwf   PWM_B
+006B   0800           00237         retlw   0
+                      00238 
                       00239 
-0065   0061           00240         clrf    TMR0                    ; if yes
-                      00241 
-0066                  00242 getbit_ready:
-0066   0666           00243         btfsc   GPIO, SDI               ; now waiting for bit to go low again - has it?
-0067   0A66           00244         goto    getbit_ready    ; if no
-                      00245 
-0068   0201           00246         movf    TMR0, w                 ; get timer's value
-0069   0030           00247         movwf   SCRATCH0                ; .. to scratch reg (ghetto chip doesn't allow operation on WREG
-                            ..?)
-006A   0370           00248         rlf             SCRATCH0,f              ; rotate MSB of TMR0 into 'C'arry (don't care about othe
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  6
+                      00240 ; ---------------------------------------------------
+                      00241 ; Given low 4 bits of cmd in INDF, return that many '1's in WREG.
+                      00242 ;
+                      00243 ; Want to return a value containing the number of '1's specified in the intensity
+                      00244 ; value. But want to spread them out for faster switching and less perceivable flicker.
+006C                  00245 setpwm:
+006C   0200           00246         movf    INDF, w         ; cmd value
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  6
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
-                            r bits)
-006B   0370           00249         rlf             SCRATCH0,f              ; .. however many times for desired timer resolution
-006C   0370           00250         rlf             SCRATCH0,f              ; hbit=40h qbit=20h
-                      00251 ;       rlf             SCRATCH0,f              ; hbit=20h qbit=10h
-006D   0360           00252         rlf             INDF,f                  ; shift bit in 'C'arry into currently-addressed buffer p
-                            osition
-006E   02F1           00253         decfsz  COUNT,f                 ; got all bits?
-006F   0A62           00254         goto    getbit_waiting  ; if no - wait for next
-0070   0800           00255         retlw   0                               ; else - done
-                      00256 
-                      00257 
-                      00258 ; ---------------------------------------------------
-                      00259 ; Given low 4 bits of cmd in INDF, shift that many '1's into SCRATCH0
-                      00260 
-                      00261 ;setpwm:
-                      00262 ;       clrf    SCRATCH0                ; clear temporary reg
-                      00263 ;       movf    INDF, w                 ; cmd value
-                      00264 ;       andlw   B'00001111'             ; mask off bogus bits
-                      00265 ;       movwf   COUNT                   ;
-                      00266 ;       iorlw   B'00000000'             ; dummy op to affect 'Z'ero status. Intensity = 0?
-                      00267 ;       btfsc   STATUS, Z
-                      00268 ;       goto    setpwm_done             ; if yes - leave register clear
-                      00269 ;;                                                      ; else...
-                      00270 ;
-                      00271 ;setpwm1:
-                      00272 ;       bsf             STATUS, C
-                      00273 ;       rlf             SCRATCH0,f
-                      00274 ;       decfsz  COUNT,f                 ; done shifting in 1s?
-                      00275 ;       goto    setpwm1                 ; if no
-                      00276 ;setpwm_done:
-                      00277 ;
-                      00278 ;       if COMM_ANODE==1
-                      00279 ;       comf    SCRATCH0, f             ; HACK: common-anode LED
-                      00280 ;       endif
-                      00281 ;
-                      00282 ;       retlw   0
-                      00283 ;
-                      00284 ; New version - use table lookup instead. Want to return a value containing the number of '1's specified
-                             in the intensity
-                      00285 ; value. But want to spread them out for faster switching and less perceivable flicker.
-0071                  00286 setpwm:
-0071   0200           00287         movf    INDF, w         ; cmd value
-0072   0E0F           00288         andlw   B'00001111'     ; mask off bogus bits
-0073   01E2           00289         addwf   PCL, f
-0074   0800           00290         retlw   B'00000000' ; 0x00
-0075   0801           00291         retlw   B'00000001' ; 0x01
-0076   0811           00292         retlw   B'00010001' ; 0x02
-0077   0849           00293         retlw   B'01001001' ; 0x03
-0078   0855           00294         retlw   B'01010101' ; 0x04
-0079   0857           00295         retlw   B'01010111' ; 0x05
-007A   0877           00296         retlw   B'01110111' ; 0x06
-007B   087F           00297         retlw   B'01111111' ; 0x07
-007C   08FF           00298         retlw   B'11111111' ; 0x08      ; last valid value
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  7
-
-
-LOC  OBJECT CODE     LINE SOURCE TEXT
-  VALUE
-
-007D   08FF           00299         retlw   B'11111111' ; 0x09      ; Should not be sent any values this high; we can't represent th
+006D   0E0F           00247         andlw   B'00001111'     ; mask off bogus bits
+006E   01E2           00248         addwf   PCL, f
+006F   0800           00249         retlw   B'00000000' ; 0x00
+0070   0801           00250         retlw   B'00000001' ; 0x01
+0071   0811           00251         retlw   B'00010001' ; 0x02
+0072   0849           00252         retlw   B'01001001' ; 0x03
+0073   0855           00253         retlw   B'01010101' ; 0x04
+0074   0857           00254         retlw   B'01010111' ; 0x05
+0075   0877           00255         retlw   B'01110111' ; 0x06
+0076   087F           00256         retlw   B'01111111' ; 0x07
+0077   08FF           00257         retlw   B'11111111' ; 0x08      ; last valid value
+0078   08FF           00258         retlw   B'11111111' ; 0x09      ; Should not be sent any values this high; we can't represent th
                             em in the PWM registers anyway
-007E   08FF           00300         retlw   B'11111111' ; 0x0A
-007F   08FF           00301         retlw   B'11111111' ; 0x0B
-0080   08FF           00302         retlw   B'11111111' ; 0x0C
-0081   08FF           00303         retlw   B'11111111' ; 0x0D
-0082   08FF           00304         retlw   B'11111111' ; 0x0E
-0083   08FF           00305         retlw   B'11111111' ; 0x0F
-                      00306 
-0084   0800           00307         retlw   0x00            ; pure paranoia
-                      00308 
-                      00309 ; ---------------------------------------------------
-                      00310 ; Perform one iteration/rotation of "poor man's PWM" for each color's register
-                      00311 
-                      00312 
-0085                  00313 pwm:
-                      00314                                                 ; ---------------
-                      00315         if COMM_ANODE==0        ; Switched in for common-cathode drive
-                      00316         rlf             PWM_R,f         ; FIXME: Separate r/g/b PWM loops, see below
-                      00317         bcf             PWM_R, 0
-                      00318         btfsc   STATUS, C
-                      00319         bsf             PWM_R, 0
-                      00320 
-                      00321         bcf             GPIO, RED
-                      00322         btfsc   STATUS, C
-                      00323         bsf             GPIO, RED
-                      00324 
-                      00325         rlf             PWM_G,f
-                      00326         bcf             PWM_G, 0
-                      00327         btfsc   STATUS, C
-                      00328         bsf             PWM_G, 0
-                      00329 
-                      00330         bcf             GPIO, GREEN
-                      00331         btfsc   STATUS, C
-                      00332         bsf             GPIO, GREEN
-                      00333 
-                      00334         rlf             PWM_B,f
-                      00335         bcf             PWM_B, 0
-                      00336         btfsc   STATUS, C
-                      00337         bsf             PWM_B, 0
-                      00338 
-                      00339         bcf             GPIO, BLUE
-                      00340         btfsc   STATUS, C
-                      00341         bsf             GPIO, BLUE
-                      00342         endif
-                      00343                                                         ; ---------------------
-                      00344         if COMM_ANODE == 1              ; Switched in for common-anode drive
-0085                  00345 pwm_r:
-0085   0372           00346         rlf             PWM_R,f
-0086   0412           00347         bcf             PWM_R, 0
-0087   0603           00348         btfsc   STATUS, C
-0088   0512           00349         bsf             PWM_R, 0
-                      00350 
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  8
+0079   08FF           00259         retlw   B'11111111' ; 0x0A
+007A   08FF           00260         retlw   B'11111111' ; 0x0B
+007B   08FF           00261         retlw   B'11111111' ; 0x0C
+007C   08FF           00262         retlw   B'11111111' ; 0x0D
+007D   08FF           00263         retlw   B'11111111' ; 0x0E
+007E   08FF           00264         retlw   B'11111111' ; 0x0F
+                      00265 
+007F   0800           00266         retlw   0x00            ; pure paranoia
+                      00267 
+                      00268 ; ---------------------------------------------------
+                      00269 ; Perform one iteration/rotation of "poor man's PWM" for each color's register
+                      00270 
+                      00271 
+0080                  00272 pwm:
+                      00273                                                 ; ---------------
+                      00274         if COMM_ANODE==0        ; Switched in for common-cathode drive
+                      00275         rlf             PWM_R,f         ; FIXME: Separate r/g/b PWM loops, see below
+                      00276         bcf             PWM_R, 0
+                      00277         btfsc   STATUS, C
+                      00278         bsf             PWM_R, 0
+                      00279 
+                      00280         bcf             GPIO, RED
+                      00281         btfsc   STATUS, C
+                      00282         bsf             GPIO, RED
+                      00283 
+                      00284         rlf             PWM_G,f
+                      00285         bcf             PWM_G, 0
+                      00286         btfsc   STATUS, C
+                      00287         bsf             PWM_G, 0
+                      00288 
+                      00289         bcf             GPIO, GREEN
+                      00290         btfsc   STATUS, C
+                      00291         bsf             GPIO, GREEN
+                      00292 
+                      00293         rlf             PWM_B,f
+                      00294         bcf             PWM_B, 0
+                      00295         btfsc   STATUS, C
+                      00296         bsf             PWM_B, 0
+                      00297 
+                      00298         bcf             GPIO, BLUE
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  7
 
 
 LOC  OBJECT CODE     LINE SOURCE TEXT
   VALUE
 
-0089   0506           00351         bsf             GPIO, RED
-008A   0703           00352         btfss   STATUS, C
-008B   0406           00353         bcf             GPIO, RED
-                      00354 ;       retlw   0
-008C                  00355 pwm_g:
-008C   0373           00356         rlf             PWM_G,f
-008D   0413           00357         bcf             PWM_G, 0
-008E   0603           00358         btfsc   STATUS, C
-008F   0513           00359         bsf             PWM_G, 0
-                      00360 
-0090   0526           00361         bsf             GPIO, GREEN
-0091   0703           00362         btfss   STATUS, C
-0092   0426           00363         bcf             GPIO, GREEN
-                      00364 ;       retlw   0
-0093                  00365 pwm_b:
-0093   0374           00366         rlf             PWM_B,f
-0094   0414           00367         bcf             PWM_B, 0
-0095   0603           00368         btfsc   STATUS, C
-0096   0514           00369         bsf             PWM_B, 0
-                      00370 
-0097   0546           00371         bsf             GPIO, BLUE
-0098   0703           00372         btfss   STATUS, C
-0099   0446           00373         bcf             GPIO, BLUE
-                      00374         endif
-                      00375 
-009A   0800           00376         retlw   0
-                      00377 
-                      00378 ; -------------------
-                      00379 
-                      00380 
-                      00381 ; Command packet format: <start> <addr[7..0]><cmd[7..0]>
-                      00382 ; Start bit is HIGH and lasts for longer than the longest possible loop run, so that all devices are gua
+                      00299         btfsc   STATUS, C
+                      00300         bsf             GPIO, BLUE
+                      00301         endif
+                      00302                                                         ; ---------------------
+                      00303         if COMM_ANODE == 1              ; Switched in for common-anode drive
+0080                  00304 pwm_r:
+0080   0372           00305         rlf             PWM_R,f                 ; Rotate next PWM value into 'C'arry
+0081   0412           00306         bcf             PWM_R, 0                ; This is whatever random junk used to be in there, so c
+                            lear it...
+0082   0603           00307         btfsc   STATUS, C               ; catch the bit that just fell off the left
+0083   0512           00308         bsf             PWM_R, 0                ; and stuff it back on the right.
+                      00309 
+0084   0506           00310         bsf             GPIO, RED               ; Now set the port line according to the same 'C'arry co
+                            ntents.
+0085   0703           00311         btfss   STATUS, C               ; ... Remember kids, comm. anode means '1' = 'off'.
+0086   0406           00312         bcf             GPIO, RED               ; .
+                      00313 ;       retlw   0
+0087                  00314 pwm_g:
+0087   0373           00315         rlf             PWM_G,f
+0088   0413           00316         bcf             PWM_G, 0
+0089   0603           00317         btfsc   STATUS, C
+008A   0513           00318         bsf             PWM_G, 0
+                      00319 
+008B   0526           00320         bsf             GPIO, GREEN
+008C   0703           00321         btfss   STATUS, C
+008D   0426           00322         bcf             GPIO, GREEN
+                      00323 ;       retlw   0
+008E                  00324 pwm_b:
+008E   0374           00325         rlf             PWM_B,f
+008F   0414           00326         bcf             PWM_B, 0
+0090   0603           00327         btfsc   STATUS, C
+0091   0514           00328         bsf             PWM_B, 0
+                      00329 
+0092   0546           00330         bsf             GPIO, BLUE
+0093   0703           00331         btfss   STATUS, C
+0094   0446           00332         bcf             GPIO, BLUE
+                      00333         endif
+                      00334 
+0095   0800           00335         retlw   0
+                      00336 
+                      00337 ; -------------------
+                      00338 
+                      00339 
+                      00340 ; Command packet format: <start> <addr[7..0]><cmd[7..0]>
+                      00341 ; Start bit is HIGH and lasts for longer than the longest possible loop run, so that all devices are gua
                             ranteed to catch it.
-                      00383 ; Subsequent bits are HIGH for either <128 timer clocks (logic 0) or >128 clocks (logic 1) ... can shift
+                      00342 ; Subsequent bits are HIGH for either <128 timer clocks (logic 0) or >128 clocks (logic 1) ... can shift
                              timer0 MSB as detected bit
-                      00384 ; ... assuming clocks aren't *insanely* skewed from one device to the next.
-                      00385 
-                      00386 
-                      00387 ; Cmd BYTE format: RGBCIIII
-                      00388 ; RGB: Which color(s) cmd applies to
-                      00389 ; IIII: Set intensity (0 ~ 8)
-                      00390 ; C: Indicates Extended Command as described below...
-                      00391 
-                      00392 ; --- Extended Commands ---
-                      00393 ; 0001xxxx : Set Group Addr to value in xxxx
-                      00394 
-                      00395 #include "vars.inc"
+                      00343 ; ... assuming clocks aren't *insanely* skewed from one device to the next.
+                      00344 
+                      00345 
+                      00346 ; Cmd BYTE format: RGBCIIII
+                      00347 ; RGB: Which color(s) cmd applies to
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00348 ; IIII: Set intensity (0 ~ 8)
+                      00349 ; C: Indicates Extended Command as described below...
+                      00350 
+                      00351 ; --- Extended Commands ---
+                      00352 ; 0001xxxx : Set Group Addr to value in xxxx
+                      00353 
+                      00354 #include "vars.inc"
                       00001 ; Vars
                       00002 
                       00003 
                       00004         cblock  0x10
                       00005 
   00000010            00006         SCRATCH0        ; general purpose scratch register
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE  9
-
-
-LOC  OBJECT CODE     LINE SOURCE TEXT
-  VALUE
-
   00000011            00007         COUNT           ; bits-in-byte countdown
                       00008 
   00000012            00009         PWM_R           ; poor-man's PWM registers: '1' bits will be rotated around in them
@@ -487,7 +441,7 @@ LOC  OBJECT CODE     LINE SOURCE TEXT
   00000016            00015         CMDBUF          ; buffer start - must be at end of vars
   00000017            00016         CMDBUF2         ; 2nd byte of cmd
                       00017         endc
-                      00396 #include "defs.inc"
+                      00355 #include "defs.inc"
                       00001 
                       00002 
   00000003            00003 SDI             equ     3               ; FIXME: All bit defs
@@ -495,30 +449,36 @@ LOC  OBJECT CODE     LINE SOURCE TEXT
   00000000            00005 RED             equ     0
   00000001            00006 GREEN   equ     1
   00000002            00007 BLUE    equ     2
-                      00397 
-                      00398 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
-                      00399 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
-009B                  00400 str_version:
-009B   0824 0849 0864 00401         DT      "$Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $"
+                      00356 
+                      00357 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
+                      00358 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
+0096                  00359 str_version:
+0096   0824 0849 0864 00360         DT      "$Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $"
        083A 0820 086D 
        0861 0869 086E 
        082E 0861 0873 
        086D 082C 0876 
        0820 0831 082E 
-       0832 0820 0832 
+       0833 0820 0832 
        0830 0830 0837 
-       082F 0830 0831 
-       082F 0832 0835 
-       0820 0831 0836 
-       083A 0832 0831 
-       083A 0832 0837 
+       082F 0831 0830 
+       082F 0830 0833 
+       0820 0830 0834 
+       083A 0834 0831 
+       083A 0835 0830 
        0820 0874 0867 
        0869 0870 0873 
        086F 086E 0820 
        0845 087
-                      00402 
-                      00403         end
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE 10
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00361 
+                      00362         end
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE 10
 
 
 SYMBOL TABLE
@@ -577,7 +537,7 @@ _CP_OFF                           00000FFF
 _CP_ON                            00000FF7
 _IntRC_OSC                        00000FFF
 _MCLRE_OFF                        00000FEF
-MPASM  5.11                          MAIN.ASM   10-3-2007  0:40:06         PAGE 11
+MPASM  5.11                          MAIN.ASM   10-3-2007  1:58:01         PAGE 11
 
 
 SYMBOL TABLE
@@ -587,29 +547,29 @@ _MCLRE_ON                         00000FFF
 _WDT_OFF                          00000FFB
 _WDT_ON                           00000FFF
 __10F200                          00000001
-extcmd                            00000048
-getbit_donewaiting                00000063
-getbit_ready                      00000066
-getbit_waiting                    00000062
-getbyte                           00000060
-getcmd                            00000025
-getstartbit                       00000027
+extcmd                            00000045
+getbit_firsthalf                  00000053
+getbit_firsthalf_end              00000054
+getbit_secondhalf                 00000057
+getbyte                           00000051
+getcmd                            00000024
+getstartbit                       00000026
 main                              00000020
-processcmd                        0000003D
-processcmd_b                      0000005C
-processcmd_g                      00000058
-processcmd_r                      00000054
-pwm                               00000085
-pwm_b                             00000093
-pwm_g                             0000008C
-pwm_r                             00000085
+processcmd                        0000003A
+processcmd_b                      00000068
+processcmd_g                      00000064
+processcmd_r                      00000060
+pwm                               00000080
+pwm_b                             0000008E
+pwm_g                             00000087
+pwm_r                             00000080
 reset_sync                        00000013
 reset_sync_wait1                  00000017
 reset_sync_wait2                  0000001C
-setgroup                          00000050
-setpwm                            00000071
+setgroup                          0000004D
+setpwm                            0000006C
 start                             00000000
-str_version                       0000009B
+str_version                       00000096
 
 
 MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
@@ -617,12 +577,12 @@ MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
 0000 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
 0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
 0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
-00C0 : XXXXXXXXXXXXXXXX ---------------- ---------------- ----------------
+00C0 : XXXXXXXXXXX----- ---------------- ---------------- ----------------
 
 All other memory blocks unused.
 
-Program Memory Words Used:   208
-Program Memory Words Free:    48
+Program Memory Words Used:   203
+Program Memory Words Free:    53
 
 
 Errors   :     0

@@ -1,4 +1,4 @@
-; $Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $
+; $Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $
 ;
 ; 10F 1-Wire Receiver + Indicator
 
@@ -79,8 +79,8 @@ main:
 	call	pwm				; 25 clocks, including call. 11 inc. call if separated...
 	btfss	GPIO, SDI		; start bit?
 	goto	main
-	goto	getcmd			; fake 'call' - shallow stack
-
+;	goto	getcmd			; fake 'call' - shallow stack
+							; Fall through...
 
 
 
@@ -100,13 +100,13 @@ getstartbit:
 ;	clrwdt
 
 	call	getbyte			; addr
-	comf	INDF,f	;hack: bits inverted?
+;	comf	INDF,f	;hack: bits inverted?
 	incf	FSR,f
 	call	getbyte			; cmd
-	comf	INDF,f	;hack: bits inverted?
+;	comf	INDF,f	;hack: bits inverted?
 
 
-	; check address
+	; check address to see if it's anything we respond to...
 	movlw	CMDBUF			; point to 1st byte of CMDBUF (addr)
 	movwf	FSR				; ...
 
@@ -114,21 +114,19 @@ getstartbit:
 	xorwf	INDF, w			;
 	btfsc	STATUS, Z
 	goto	processcmd
-;	bz		processcmd
 
 
-	movlw	MYADDR			; This chip's addr?
+
+	movlw	MYADDR			; This chip's addr? (NOTE: Hard-coded literal)
 	xorwf	INDF, W			;
 	btfsc	STATUS, Z
 	goto	processcmd
-;	bz		processcmd
 
-	movf	GROUPADDR, w	; This chip's Group addr?
+
+	movf	GROUPADDR, w	; This chip's Group addr? (NOTE: Variable)
 	xorwf	INDF, W			;
 	btfsc	STATUS, Z
 	goto	processcmd
-;	bz		processcmd
-
 
 	goto	main			; else - not for us...
 
@@ -180,28 +178,42 @@ setgroup:
 ;	movwf	PWM_B			; debug
 	goto	main
 
+
+
+; -------------------------------
+; Receive a complete byte (sans start condition) from the 1-wire bus.
+; When we've gotten here, start condition already set and just released.
+
+getbyte:
+	movlw	H'08'				; rotate this many times
+	movwf	COUNT				;
+
+getbit_firsthalf:
+	clrf	TMR0				; begin timing low half of bit
+; FIXME: temporarily removed for testing
+;	call	pwm					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+getbit_firsthalf_end:
+	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+	goto	getbit_firsthalf_end; if no
+
+	comf	TMR0, f				; if yes - begin timing high half of bit
+
+getbit_secondhalf:
+	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+	goto	getbit_secondhalf	; if no
+
+	movf	TMR0, w				; get timer's value
+	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+	decfsz	COUNT,f				; got all bits?
+	goto	getbit_firsthalf	; if no - wait for next
+	retlw	0					; else - done
+
+
 ; ---------------------------------------------------
 ; Process command byte in buffer for the given color
 
-;processcmd_r:
-;	call	setpwm
-;	movf	SCRATCH0, w
-;	movwf	PWM_R
-;	retlw	0
-;
-;processcmd_g:
-;	call	setpwm
-;	movf	SCRATCH0, w
-;	movwf	PWM_G
-;	retlw	0
-;
-;processcmd_b:
-;	call	setpwm
-;	movf	SCRATCH0, w
-;	movwf	PWM_B
-;	retlw	0
-
-; New: 'setpwm' returns the value in WREG directly.
 processcmd_r:
 	call	setpwm
 	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
@@ -223,65 +235,12 @@ processcmd_b:
 	#endif
 	movwf	PWM_B
 	retlw	0
-; -------------------------------
-
-
-getbyte:
-	movlw	H'08'			; rotate this many times
-	movwf	COUNT			;
-
-
-getbit_waiting:
-	call	pwm				; ONCE, in dead time. 25 clocks, including call; +10 after bit received
-getbit_donewaiting:
-	btfss	GPIO, SDI			; wait for SDI to go high - has it?
-	goto	getbit_donewaiting	; if no
-
-	clrf	TMR0			; if yes
-
-getbit_ready:
-	btfsc	GPIO, SDI		; now waiting for bit to go low again - has it?
-	goto	getbit_ready	; if no
-
-	movf	TMR0, w			; get timer's value
-	movwf	SCRATCH0		; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
-	rlf		SCRATCH0,f		; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
-	rlf		SCRATCH0,f		; .. however many times for desired timer resolution
-	rlf		SCRATCH0,f		; hbit=40h qbit=20h
-;	rlf		SCRATCH0,f		; hbit=20h qbit=10h
-	rlf		INDF,f			; shift bit in 'C'arry into currently-addressed buffer position
-	decfsz	COUNT,f			; got all bits?
-	goto	getbit_waiting	; if no - wait for next
-	retlw	0				; else - done
 
 
 ; ---------------------------------------------------
-; Given low 4 bits of cmd in INDF, shift that many '1's into SCRATCH0
-
-;setpwm:
-;	clrf	SCRATCH0		; clear temporary reg
-;	movf	INDF, w			; cmd value
-;	andlw	B'00001111'		; mask off bogus bits
-;	movwf	COUNT			;
-;	iorlw	B'00000000'		; dummy op to affect 'Z'ero status. Intensity = 0?
-;	btfsc	STATUS, Z
-;	goto	setpwm_done		; if yes - leave register clear
-;;							; else...
+; Given low 4 bits of cmd in INDF, return that many '1's in WREG.
 ;
-;setpwm1:
-;	bsf		STATUS, C
-;	rlf		SCRATCH0,f
-;	decfsz	COUNT,f			; done shifting in 1s?
-;	goto	setpwm1			; if no
-;setpwm_done:
-;
-;	if COMM_ANODE==1
-;	comf	SCRATCH0, f		; HACK: common-anode LED
-;	endif
-;
-;	retlw	0
-;
-; New version - use table lookup instead. Want to return a value containing the number of '1's specified in the intensity
+; Want to return a value containing the number of '1's specified in the intensity
 ; value. But want to spread them out for faster switching and less perceivable flicker.
 setpwm:
 	movf	INDF, w		; cmd value
@@ -343,14 +302,14 @@ pwm:
 							; ---------------------
 	if COMM_ANODE == 1		; Switched in for common-anode drive
 pwm_r:
-	rlf		PWM_R,f
-	bcf		PWM_R, 0
-	btfsc	STATUS, C
-	bsf		PWM_R, 0
+	rlf		PWM_R,f			; Rotate next PWM value into 'C'arry
+	bcf		PWM_R, 0		; This is whatever random junk used to be in there, so clear it...
+	btfsc	STATUS, C		; catch the bit that just fell off the left
+	bsf		PWM_R, 0		; and stuff it back on the right.
 
-	bsf		GPIO, RED
-	btfss	STATUS, C
-	bcf		GPIO, RED
+	bsf		GPIO, RED		; Now set the port line according to the same 'C'arry contents.
+	btfss	STATUS, C		; ... Remember kids, comm. anode means '1' = 'off'.
+	bcf		GPIO, RED		; .
 ;	retlw	0
 pwm_g:
 	rlf		PWM_G,f
@@ -398,6 +357,6 @@ pwm_b:
 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
 str_version:
-	DT	"$Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $"
+	DT	"$Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $"
 
 	end
