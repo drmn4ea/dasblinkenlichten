@@ -1,4 +1,4 @@
-; $Id: main.asm,v 1.1 2007/01/25 16:12:52 tgipson Exp $
+; $Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $
 ;
 ; 10F 1-Wire Receiver + Indicator
 
@@ -11,7 +11,7 @@
 
 ; ----------------------
 
-#define		MYADDR		0x12		; Personalized address to be stored in THIS chip. Each chip on the bus
+#define		MYADDR		0x19		; Personalized address to be stored in THIS chip. Each chip on the bus
 									; must have a unique address to be controlled independently...
 
 #define		COMM_ANODE	0x01		; If indicator is common-anode, polarity of output drive and idle are inverted
@@ -22,13 +22,6 @@
 
 	list	p=10f200
 	#include "p10f200.inc"
-
-;	org	0x01FE
-;stop:
-;	goto	stop
-;
-;	org	0x1FF
-;	movlw	H'08'
 
 
 	org 0x00			; effective reset vector
@@ -87,119 +80,10 @@ main:
 	btfss	GPIO, SDI		; start bit?
 	goto	main
 	goto	getcmd			; fake 'call' - shallow stack
-;	movwf	SCRATCH0		; move return status somewhere usable
-;	incfsz	SCRATCH0,f		; test it. Returned FF?
-;	goto	main			; if no - no cmd
-
-;	; else, process cmd...
-
-	; --- debug ---
-;	movlw	CMDBUF			; point to 1st byte of CMDBUF (addr)
-;	movwf	FSR				; ...
-;	movf	INDF, w	; debug
-;	movwf	PWM_R	; - what address are we getting???
-;	incf	FSR,f	;
-;	movf	INDF, w	;
-;	movwf	PWM_G	;
-	; --- end debug ---
 
 
-; ---------------------------------------------------
-; Given low 4 bits of cmd in INDF, shift that many '1's into SCRATCH0
-
-setpwm:
-	clrf	SCRATCH0		; clear temporary reg
-	movf	INDF, w			; cmd value
-	andlw	B'00001111'		; mask off bogus bits
-	movwf	COUNT			;
-	iorlw	B'00000000'		; dummy op to affect 'Z'ero status. Intensity = 0?
-	btfsc	STATUS, Z
-	goto	setpwm_done
-;	bz		setpwm_done		; if yes - leave register clear
-;							; else...
-
-setpwm1:
-	bsf		STATUS, C
-	rlf		SCRATCH0,f
-	decfsz	COUNT,f			; done shifting in 1s?
-	goto	setpwm1			; if no
-setpwm_done:
-
-	if COMM_ANODE==1
-	comf	SCRATCH0, f		; HACK: common-anode LED
-	endif
-
-	retlw	0
 
 
-; ---------------------------------------------------
-; Perform one iteration/rotation of "poor man's PWM" for each color's register
-
-
-pwm:
-						; ---------------
-	if COMM_ANODE==0	; Switched in for common-cathode drive
-	rlf		PWM_R,f		; FIXME: Separate r/g/b PWM loops, see below
-	bcf		PWM_R, 0
-	btfsc	STATUS, C
-	bsf		PWM_R, 0
-
-	bcf		GPIO, RED
-	btfsc	STATUS, C
-	bsf		GPIO, RED
-
-	rlf		PWM_G,f
-	bcf		PWM_G, 0
-	btfsc	STATUS, C
-	bsf		PWM_G, 0
-
-	bcf		GPIO, GREEN
-	btfsc	STATUS, C
-	bsf		GPIO, GREEN
-
-	rlf		PWM_B,f
-	bcf		PWM_B, 0
-	btfsc	STATUS, C
-	bsf		PWM_B, 0
-
-	bcf		GPIO, BLUE
-	btfsc	STATUS, C
-	bsf		GPIO, BLUE
-	endif
-							; ---------------------
-	if COMM_ANODE == 1		; Switched in for common-anode drive
-pwm_r:
-	rlf		PWM_R,f
-	bcf		PWM_R, 0
-	btfsc	STATUS, C
-	bsf		PWM_R, 0
-
-	bsf		GPIO, RED
-	btfss	STATUS, C
-	bcf		GPIO, RED
-;	retlw	0
-pwm_g:
-	rlf		PWM_G,f
-	bcf		PWM_G, 0
-	btfsc	STATUS, C
-	bsf		PWM_G, 0
-
-	bsf		GPIO, GREEN
-	btfss	STATUS, C
-	bcf		GPIO, GREEN
-;	retlw	0
-pwm_b:
-	rlf		PWM_B,f
-	bcf		PWM_B, 0
-	btfsc	STATUS, C
-	bsf		PWM_B, 0
-
-	bsf		GPIO, BLUE
-	btfss	STATUS, C
-	bcf		GPIO, BLUE
-	endif
-
-	retlw	0
 
 ; ---------------------------------------------------
 ; Check for incoming cmd byte on SDI. If cmd (start condition), receive the cmd packet to CMDBUF.
@@ -299,25 +183,46 @@ setgroup:
 ; ---------------------------------------------------
 ; Process command byte in buffer for the given color
 
+;processcmd_r:
+;	call	setpwm
+;	movf	SCRATCH0, w
+;	movwf	PWM_R
+;	retlw	0
+;
+;processcmd_g:
+;	call	setpwm
+;	movf	SCRATCH0, w
+;	movwf	PWM_G
+;	retlw	0
+;
+;processcmd_b:
+;	call	setpwm
+;	movf	SCRATCH0, w
+;	movwf	PWM_B
+;	retlw	0
+
+; New: 'setpwm' returns the value in WREG directly.
 processcmd_r:
 	call	setpwm
-	movf	SCRATCH0, w
+	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
+	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
+	#endif
 	movwf	PWM_R
 	retlw	0
-
 processcmd_g:
 	call	setpwm
-	movf	SCRATCH0, w
+	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
+	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
+	#endif
 	movwf	PWM_G
 	retlw	0
-
 processcmd_b:
 	call	setpwm
-	movf	SCRATCH0, w
+	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
+	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
+	#endif
 	movwf	PWM_B
 	retlw	0
-
-
 ; -------------------------------
 
 
@@ -350,7 +255,125 @@ getbit_ready:
 	retlw	0				; else - done
 
 
+; ---------------------------------------------------
+; Given low 4 bits of cmd in INDF, shift that many '1's into SCRATCH0
 
+;setpwm:
+;	clrf	SCRATCH0		; clear temporary reg
+;	movf	INDF, w			; cmd value
+;	andlw	B'00001111'		; mask off bogus bits
+;	movwf	COUNT			;
+;	iorlw	B'00000000'		; dummy op to affect 'Z'ero status. Intensity = 0?
+;	btfsc	STATUS, Z
+;	goto	setpwm_done		; if yes - leave register clear
+;;							; else...
+;
+;setpwm1:
+;	bsf		STATUS, C
+;	rlf		SCRATCH0,f
+;	decfsz	COUNT,f			; done shifting in 1s?
+;	goto	setpwm1			; if no
+;setpwm_done:
+;
+;	if COMM_ANODE==1
+;	comf	SCRATCH0, f		; HACK: common-anode LED
+;	endif
+;
+;	retlw	0
+;
+; New version - use table lookup instead. Want to return a value containing the number of '1's specified in the intensity
+; value. But want to spread them out for faster switching and less perceivable flicker.
+setpwm:
+	movf	INDF, w		; cmd value
+	andlw	B'00001111'	; mask off bogus bits
+	addwf	PCL, f
+	retlw	B'00000000' ; 0x00
+	retlw	B'00000001' ; 0x01
+	retlw	B'00010001' ; 0x02
+	retlw	B'01001001' ; 0x03
+	retlw	B'01010101' ; 0x04
+	retlw	B'01010111' ; 0x05
+	retlw	B'01110111' ; 0x06
+	retlw	B'01111111' ; 0x07
+	retlw	B'11111111' ; 0x08	; last valid value
+	retlw	B'11111111' ; 0x09	; Should not be sent any values this high; we can't represent them in the PWM registers anyway
+	retlw	B'11111111' ; 0x0A
+	retlw	B'11111111' ; 0x0B
+	retlw	B'11111111' ; 0x0C
+	retlw	B'11111111' ; 0x0D
+	retlw	B'11111111' ; 0x0E
+	retlw	B'11111111' ; 0x0F
+
+	retlw	0x00		; pure paranoia
+
+; ---------------------------------------------------
+; Perform one iteration/rotation of "poor man's PWM" for each color's register
+
+
+pwm:
+						; ---------------
+	if COMM_ANODE==0	; Switched in for common-cathode drive
+	rlf		PWM_R,f		; FIXME: Separate r/g/b PWM loops, see below
+	bcf		PWM_R, 0
+	btfsc	STATUS, C
+	bsf		PWM_R, 0
+
+	bcf		GPIO, RED
+	btfsc	STATUS, C
+	bsf		GPIO, RED
+
+	rlf		PWM_G,f
+	bcf		PWM_G, 0
+	btfsc	STATUS, C
+	bsf		PWM_G, 0
+
+	bcf		GPIO, GREEN
+	btfsc	STATUS, C
+	bsf		GPIO, GREEN
+
+	rlf		PWM_B,f
+	bcf		PWM_B, 0
+	btfsc	STATUS, C
+	bsf		PWM_B, 0
+
+	bcf		GPIO, BLUE
+	btfsc	STATUS, C
+	bsf		GPIO, BLUE
+	endif
+							; ---------------------
+	if COMM_ANODE == 1		; Switched in for common-anode drive
+pwm_r:
+	rlf		PWM_R,f
+	bcf		PWM_R, 0
+	btfsc	STATUS, C
+	bsf		PWM_R, 0
+
+	bsf		GPIO, RED
+	btfss	STATUS, C
+	bcf		GPIO, RED
+;	retlw	0
+pwm_g:
+	rlf		PWM_G,f
+	bcf		PWM_G, 0
+	btfsc	STATUS, C
+	bsf		PWM_G, 0
+
+	bsf		GPIO, GREEN
+	btfss	STATUS, C
+	bcf		GPIO, GREEN
+;	retlw	0
+pwm_b:
+	rlf		PWM_B,f
+	bcf		PWM_B, 0
+	btfsc	STATUS, C
+	bsf		PWM_B, 0
+
+	bsf		GPIO, BLUE
+	btfss	STATUS, C
+	bcf		GPIO, BLUE
+	endif
+
+	retlw	0
 
 ; -------------------
 
@@ -375,6 +398,6 @@ getbit_ready:
 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
 str_version:
-	DT	"$Id: main.asm,v 1.1 2007/01/25 16:12:52 tgipson Exp $"
+	DT	"$Id: main.asm,v 1.2 2007/01/25 16:21:27 tgipson Exp $"
 
 	end
