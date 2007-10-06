@@ -1,4 +1,4 @@
-; $Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $
+; $Id: main.asm,v 1.4 2007/10/03 06:00:51 tgipson Exp $
 ;
 ; 10F 1-Wire Receiver + Indicator
 
@@ -18,16 +18,32 @@
 
 ; ----------------------
 
-
+;	__config	0x000000
 
 	list	p=10f200
 	#include "p10f200.inc"
 
 
+
 	org 0x00			; effective reset vector
-;	movwf	OSCCAL		; set factory oscillator calibration value from last program memory byte (set as MOVLW H'xx' from factory)
+	goto	start
+
+	; First 64 bytes and last byte (osc. calibration word) are not protected regardless of CodeProtect bits, so
+	; put the unimportant stuff there.
+
+; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
+; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
+str_version:
+	DT	"$Id: main.asm,v 1.4 2007/10/03 06:00:51 tgipson Exp $"
+
+
+
+	org	D'64'
 start:
 	clrwdt
+	movlw	B'01111110'
+	movwf	OSCCAL		; disregard calibration and set osc. speed to maximum; GP2 on GP2
+
 	movlw	B'11001000'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
 ;	movlw	B'11001111'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /128
 	OPTION
@@ -37,8 +53,8 @@ start:
 	clrf	GPIO
 
 	bsf		GPIO, GREEN		; Check for reset...
-	bsf		GPIO, BLUE
-	bcf		GPIO, RED
+	bcf		GPIO, BLUE
+	bsf		GPIO, RED
 
 	clrf	PWM_R
 	clrf	PWM_G
@@ -83,7 +99,8 @@ main:
 							; Fall through...
 
 
-
+; +17 processcmd
+; 
 
 ; ---------------------------------------------------
 ; Check for incoming cmd byte on SDI. If cmd (start condition), receive the cmd packet to CMDBUF.
@@ -105,7 +122,7 @@ getstartbit:
 	call	getbyte			; cmd
 ;	comf	INDF,f	;hack: bits inverted?
 
-
+	; 66 clocks from here to main (18+48)
 	; check address to see if it's anything we respond to...
 	movlw	CMDBUF			; point to 1st byte of CMDBUF (addr)
 	movwf	FSR				; ...
@@ -130,40 +147,39 @@ getstartbit:
 
 	goto	main			; else - not for us...
 
-processcmd:
-
-;	movlw	H'FF'		; debug
-;	movwf	PWM_B		; - check for getting here
+processcmd:	; 48 incl. call/return
 
 	movlw	CMDBUF+1		; point to 2nd byte of CMDBUF (cmd)
 	movwf	FSR				; ...
 
-	btfsc	INDF, 4			; Extended Command bit
+	btfsc	INDF, 7			; Extended Command bit
 	goto	extcmd
 
-	btfsc	INDF, 7			; R cmd
-	call	processcmd_r
-	btfsc	INDF, 6			; G cmd
+	btfsc	INDF, 6			; R cmd
+	call	processcmd_r	; 13
+	btfsc	INDF, 5			; G cmd
 	call	processcmd_g
-	btfsc	INDF, 5			; B cmd
+	btfsc	INDF, 4			; B cmd
 	call	processcmd_b
 	goto	main			; done
 
 
-extcmd:						; Extended commands are handled here
-;	movlw	b'11111110'		; debug
-;	movwf	PWM_R			; debug
 
-	movf	INDF, w			; Decode cmd to SCRATCH0
-	andlw	B'11100000'		; ...
+; If payload byte was '1xxxxxxx', decode as an Extended command...
+; 11xxxxxx Set Group Address
+; 10000000 Enter Power Save
+
+extcmd:
+
+	movf	INDF, w			; Decode against "Set Group"
+	andlw	B'11000000'		; only highest 2 bits specify the cmd
 	movwf	SCRATCH0		;
 
-	movlw	H'00'
+	movlw	B'11000000'
 	xorwf	SCRATCH0, w
 	btfsc	STATUS, Z
 	goto	setgroup
-;	movlw	b'11111110'		; debug
-;	movwf	PWM_G			; debug
+
 	; ... other extended commands here ...
 
 	goto	main
@@ -172,8 +188,8 @@ extcmd:						; Extended commands are handled here
 
 setgroup:
 	movf	INDF, w
-	andlw	B'00001111'
-	movwf	GROUPADDR		; store low nibble of extended cmd as group address
+	andlw	B'00111111'
+	movwf	GROUPADDR		; store low bits (payload) of extended cmd as group address
 ;	movlw	b'11111110'		; debug
 ;	movwf	PWM_B			; debug
 	goto	main
@@ -191,7 +207,7 @@ getbyte:
 getbit_firsthalf:
 	clrf	TMR0				; begin timing low half of bit
 ; FIXME: temporarily removed for testing
-;	call	pwm					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+	call	pwm					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
 getbit_firsthalf_end:
 	btfss	GPIO, SDI			; wait for SDI to go high - has it?
 	goto	getbit_firsthalf_end; if no
@@ -215,7 +231,7 @@ getbit_secondhalf:
 ; Process command byte in buffer for the given color
 
 processcmd_r:
-	call	setpwm
+	call	setpwm				; 7
 	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
 	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
 	#endif
@@ -263,6 +279,22 @@ setpwm:
 	retlw	B'11111111' ; 0x0E
 	retlw	B'11111111' ; 0x0F
 
+;	retlw	B'00000000' ; 0x00
+;	retlw	B'00000001' ; 0x01
+;	retlw	B'00000011' ; 0x02
+;	retlw	B'00000111' ; 0x03
+;	retlw	B'00001111' ; 0x04
+;	retlw	B'00011111' ; 0x05
+;	retlw	B'00111111' ; 0x06
+;	retlw	B'01111111' ; 0x07
+;	retlw	B'11111111' ; 0x08	; last valid value
+;	retlw	B'11111111' ; 0x09	; Should not be sent any values this high; we can't represent them in the PWM registers anyway
+;	retlw	B'11111111' ; 0x0A
+;	retlw	B'11111111' ; 0x0B
+;	retlw	B'11111111' ; 0x0C
+;	retlw	B'11111111' ; 0x0D
+;	retlw	B'11111111' ; 0x0E
+;	retlw	B'11111111' ; 0x0F
 	retlw	0x00		; pure paranoia
 
 ; ---------------------------------------------------
@@ -354,9 +386,6 @@ pwm_b:
 #include "vars.inc"
 #include "defs.inc"
 
-; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
-; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
-str_version:
-	DT	"$Id: main.asm,v 1.3 2007/10/03 04:41:50 tgipson Exp $"
+
 
 	end
