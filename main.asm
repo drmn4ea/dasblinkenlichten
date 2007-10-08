@@ -1,4 +1,4 @@
-; $Id: main.asm,v 1.4 2007/10/03 06:00:51 tgipson Exp $
+; $Id: main.asm,v 1.5 2007/10/06 05:42:58 tgipson Exp $
 ;
 ; 10F 1-Wire Receiver + Indicator
 
@@ -33,16 +33,16 @@
 
 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
-str_version:
-	DT	"$Id: main.asm,v 1.4 2007/10/03 06:00:51 tgipson Exp $"
+;str_version:
+;	DT	"$Id: main.asm,v 1.5 2007/10/06 05:42:58 tgipson Exp $"
 
 
 
-	org	D'64'
+;	org	D'64'
 start:
 	clrwdt
-	movlw	B'01111110'
-	movwf	OSCCAL		; disregard calibration and set osc. speed to maximum; GP2 on GP2
+	;movlw	B'01111110'
+	;movwf	OSCCAL		; disregard calibration and set osc. speed to maximum; GP2 on GP2
 
 	movlw	B'11001000'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
 ;	movlw	B'11001111'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /128
@@ -62,12 +62,23 @@ start:
 
 	clrf	GROUPADDR
 
-	movlw	B'11111110'		; debug - see if light lights / program running
+	movlw	B'11111111'		; debug - see if light lights / program running
 	movwf	PWM_R			;
-	movlw	B'11111110'
+	movlw	B'11111111'
 	movwf	PWM_G			;
-	movlw	B'11111110'
+	movlw	B'11111111'
 	movwf	PWM_B			;
+
+debug_hang:		; show long blue to indicate sync lost
+	movlw	0x80
+	movwf	COUNT
+	clrf	SCRATCH0
+debug_hang_outer:
+	clrwdt
+	decfsz	SCRATCH0, f
+	goto	debug_hang_outer
+	decfsz	COUNT, f
+	goto	debug_hang_outer
 
 
 reset_sync:					; Sync with extended STOP condition
@@ -92,11 +103,16 @@ reset_sync_wait2:
 
 main:
 	clrwdt
-	call	pwm				; 25 clocks, including call. 11 inc. call if separated...
-	btfss	GPIO, SDI		; start bit?
+	btfsc	GPIO, SDI		; start bit?
+	goto	getcmd			; fake 'call' - shallow stack
+	call	pwm_r
+	btfsc	GPIO, SDI		; start bit?
+	goto	getcmd			; fake 'call' - shallow stack
+	call	pwm_g
+	btfsc	GPIO, SDI		; start bit?
+	goto	getcmd			; fake 'call' - shallow stack
+	call	pwm_b
 	goto	main
-;	goto	getcmd			; fake 'call' - shallow stack
-							; Fall through...
 
 
 ; +17 processcmd
@@ -116,16 +132,71 @@ getstartbit:
 
 ;	clrwdt
 
-	call	getbyte			; addr
-;	comf	INDF,f	;hack: bits inverted?
+getbyte1:
+	clrf	TMR0				; begin timing low half of bit
+	movlw	H'08'				; rotate this many times
+	movwf	COUNT				;
+
+getbit_firsthalf:
+
+; FIXME: temporarily removed for testing
+	call	pwmjump					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+getbit_firsthalf_end:
+	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+	goto	getbit_firsthalf_end; if no
+
+	comf	TMR0, f				; if yes - begin timing high half of bit
+
+getbit_secondhalf:
+	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+	goto	getbit_secondhalf	; if no
+
+	movf	TMR0, w				; get timer's value
+	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+	clrf	TMR0				; begin timing low half of bit
+	rlf		SCRATCH0,f			; rotate MSB of stored TMR0 into 'C'arry (don't care about other bits)
+	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+
+	decfsz	COUNT,f				; got all bits?
+	goto	getbit_firsthalf	; if no - wait for next
+	;retlw	0					; else - done
+
+	clrf	TMR0				; begin timing low half of bit
 	incf	FSR,f
-	call	getbyte			; cmd
-;	comf	INDF,f	;hack: bits inverted?
+
+getbyte2:
+	movlw	H'08'				; rotate this many times
+	movwf	COUNT				;
+
+getbit_firsthalf2:
+
+; FIXME: temporarily removed for testing
+	call	pwmjump					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+getbit_firsthalf_end2:
+	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+	goto	getbit_firsthalf_end2; if no
+
+	comf	TMR0, f				; if yes - begin timing high half of bit
+
+getbit_secondhalf2:
+	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+	goto	getbit_secondhalf2	; if no
+
+	movf	TMR0, w				; get timer's value
+	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+	clrf	TMR0				; begin timing low half of bit
+	rlf		SCRATCH0,f			; rotate MSB of stored TMR0 into 'C'arry (don't care about other bits)
+	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+
+	decfsz	COUNT,f				; got all bits?
+	goto	getbit_firsthalf2	; if no - wait for next
 
 	; 66 clocks from here to main (18+48)
 	; check address to see if it's anything we respond to...
-	movlw	CMDBUF			; point to 1st byte of CMDBUF (addr)
-	movwf	FSR				; ...
+;	movlw	CMDBUF			; point to 1st byte of CMDBUF (addr)
+;	movwf	FSR				; ...
+
+	decf	FSR, f
 
 	movlw	H'00'			; General Call addr? (everybody! everybody!)
 	xorwf	INDF, w			;
@@ -200,31 +271,159 @@ setgroup:
 ; Receive a complete byte (sans start condition) from the 1-wire bus.
 ; When we've gotten here, start condition already set and just released.
 
-getbyte:
-	movlw	H'08'				; rotate this many times
-	movwf	COUNT				;
 
-getbit_firsthalf:
-	clrf	TMR0				; begin timing low half of bit
-; FIXME: temporarily removed for testing
-	call	pwm					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
-getbit_firsthalf_end:
-	btfss	GPIO, SDI			; wait for SDI to go high - has it?
-	goto	getbit_firsthalf_end; if no
 
-	comf	TMR0, f				; if yes - begin timing high half of bit
+	retlw	0
 
-getbit_secondhalf:
-	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
-	goto	getbit_secondhalf	; if no
 
-	movf	TMR0, w				; get timer's value
-	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
-	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
-	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
-	decfsz	COUNT,f				; got all bits?
-	goto	getbit_firsthalf	; if no - wait for next
-	retlw	0					; else - done
+;
+;
+;bgetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_g					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;bgetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	bgetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;bgetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	bgetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;
+;cgetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_b					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;cgetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	cgetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;cgetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	cgetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;dgetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_r					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;dgetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	dgetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;dgetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	dgetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;egetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_g					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;egetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	egetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;egetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	egetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;fgetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_b					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;fgetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	fgetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;fgetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	fgetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;
+;
+;ggetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_r					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;ggetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	ggetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;ggetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	ggetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;
+;
+;hgetbit_firsthalf:
+;	clrf	TMR0				; begin timing low half of bit
+;; FIXME: temporarily removed for testing
+;	call	pwm_g					; ONCE, in dead time. xxx clocks, including call; +xxx after bit received
+;hgetbit_firsthalf_end:
+;	btfss	GPIO, SDI			; wait for SDI to go high - has it?
+;	goto	hgetbit_firsthalf_end; if no
+;
+;	comf	TMR0, f				; if yes - begin timing high half of bit
+;
+;hgetbit_secondhalf:
+;	btfsc	GPIO, SDI			; now waiting for bit to go low again - has it?
+;	goto	hgetbit_secondhalf	; if no
+;
+;	movf	TMR0, w				; get timer's value
+;	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
+;	rlf		SCRATCH0,f			; rotate MSB of TMR0 into 'C'arry (don't care about other bits)
+;	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
+;
+;	retlw	0					; else - done
+
+
 
 
 ; ---------------------------------------------------
@@ -301,9 +500,10 @@ setpwm:
 ; Perform one iteration/rotation of "poor man's PWM" for each color's register
 
 
-pwm:
+
 						; ---------------
 	if COMM_ANODE==0	; Switched in for common-cathode drive
+pwm:
 	rlf		PWM_R,f		; FIXME: Separate r/g/b PWM loops, see below
 	bcf		PWM_R, 0
 	btfsc	STATUS, C
@@ -333,6 +533,20 @@ pwm:
 	endif
 							; ---------------------
 	if COMM_ANODE == 1		; Switched in for common-anode drive
+
+pwmjump:
+	movf	COUNT, w
+	addwf	PCL, f
+	goto	pwm_g	; 0x00
+	goto	pwm_b	; 0x01
+	goto	pwm_r	; 0x02
+	goto	pwm_g	; 0x03
+	goto	pwm_b	; 0x04
+	goto	pwm_r	; 0x05
+	goto	pwm_g	; 0x06
+	goto	pwm_b	; 0x07
+
+pwm:
 pwm_r:
 	rlf		PWM_R,f			; Rotate next PWM value into 'C'arry
 	bcf		PWM_R, 0		; This is whatever random junk used to be in there, so clear it...
@@ -342,7 +556,7 @@ pwm_r:
 	bsf		GPIO, RED		; Now set the port line according to the same 'C'arry contents.
 	btfss	STATUS, C		; ... Remember kids, comm. anode means '1' = 'off'.
 	bcf		GPIO, RED		; .
-;	retlw	0
+	retlw	0
 pwm_g:
 	rlf		PWM_G,f
 	bcf		PWM_G, 0
@@ -352,7 +566,7 @@ pwm_g:
 	bsf		GPIO, GREEN
 	btfss	STATUS, C
 	bcf		GPIO, GREEN
-;	retlw	0
+	retlw	0
 pwm_b:
 	rlf		PWM_B,f
 	bcf		PWM_B, 0
@@ -362,6 +576,7 @@ pwm_b:
 	bsf		GPIO, BLUE
 	btfss	STATUS, C
 	bcf		GPIO, BLUE
+	retlw	0
 	endif
 
 	retlw	0
