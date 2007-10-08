@@ -8,14 +8,15 @@ init_ports:
 
 	MOVLW B'00001110' ; Configure A/D
 	MOVWF ADCON1 ; for digital inputs // except AN0
-	MOVLW 07h ; Configure comparators
-	MOVWF CMCON ; for digital input
+;	MOVLW 07h ; Configure comparators
+;	MOVWF CMCON ; for digital input
 
 
 	bcf			TRISC, 6	; Tx
 	bsf			TRISC, 7	; Rx
 
 	bcf			SDIOTRIS, S_DO
+	bcf			TRISC, 0	; LED
 
 	bsf			SDIOTRIS, ACCEL_X
 	bcf			SDIOTRIS, ACCEL_PWR

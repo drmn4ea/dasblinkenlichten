@@ -35,6 +35,8 @@ str_vars_ver:
 		SCRATCH3
 		SCRATCH4
 		SCRATCH5
+		SCRATCH6
+		SCRATCH7
 
 	; ADC result
 		ADC3
@@ -64,7 +66,14 @@ str_vars_ver:
 		ADDR
 		COMMAND
 
-	; table
-		ADDRTBL		; Must be last entry!...
+		INTENS_R
+		INTENS_G
+		INTENS_B
 
+	; table
 	endc
+
+	cblock	0x100
+		ADDRTBL		; Must be last entry!...
+	endc
+

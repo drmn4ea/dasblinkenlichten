@@ -3,10 +3,10 @@
 ; Port and bit definitions
 
 ; FakeSDI serial
-SDIO		equ	PORTD
-SDIOTRIS	equ	TRISD
+SDIO		equ	PORTB
+SDIOTRIS	equ	TRISB
 ACCEL_PWR	equ	1
-S_DO		equ	7			; NOTE: SD_I / SD_O defined here relative to PIC, not ADC!
+S_DO		equ	3			; NOTE: SD_I / SD_O defined here relative to PIC, not ADC!
 ACCEL_X		equ	0
 ;ACCEL_Y		equ	2
 

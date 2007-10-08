@@ -1,7 +1,7 @@
 
 
 ; Node color table in memory:
-;    [ADDR] [REDI] [GREENI] [BLUEI]
+
 
 
 ; FSR1: Color table ptr
@@ -25,8 +25,17 @@ chain_init_2:
 	clrf	POSTINC1			; ...
 	clrf	POSTINC1			;
 
+	clrf	POSTINC1			; final R
+	clrf	POSTINC1			; final G
+	clrf	POSTINC1			; final B
+	clrf	POSTINC1			; flags
+
 	tstfsz	TABLAT				; address byte from chain zero?
 	goto	chain_init_2		; if no - more addresses to read, keep reading	
+
+
+
+
 
 chain_init_3:
 	movlw	UPPER	str_rand	; point to start of random number table
@@ -36,17 +45,22 @@ chain_init_3:
 	movlw	LOW		str_rand
 	movwf	TBLPTRL
 
-	lfsr	FSR1, ADDRTBL	; point to start of address table
+	return
+
+;	lfsr	FSR1, ADDRTBL	; point to start of address table
 
 chain_loop:
 	call	fade
 	goto	chain_loop
 
 
+#ifdef COMMENTED
+
 ; -----------
 ; Given an address, color(s) and target intensity, fade from current intensity to that one
 
 fade:
+	call	delay20sec		; HACK: Slow things down enough to see...
 ;	movlw B'11111100'		; 
 ;	andwf	FSR1L			; Point to 1st (address) byte of 4-byte table entry
 	movff	POSTINC1, ADDR
@@ -115,3 +129,4 @@ fade_done:
 	movff	INTENS, INDF1
 	movf	POSTINC1, w			; dummy increment
 	return
+endif

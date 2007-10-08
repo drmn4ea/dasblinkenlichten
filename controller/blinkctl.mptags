@@ -1,0 +1,30 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.5.4	//
+!_TAG_REVISION_NAME	MCHPTags	//
+!_TAG_REVISION_VERSION	6.0.1	//
+colorchg	C:\Data\projects\picsoft\10fblinky\controller\main.asm	228;"	l	line:228
+effecttest	C:\Data\projects\picsoft\10fblinky\controller\main.asm	127;"	l	line:127
+effecttest2	C:\Data\projects\picsoft\10fblinky\controller\main.asm	133;"	l	line:133
+effecttest_doit	C:\Data\projects\picsoft\10fblinky\controller\main.asm	141;"	l	line:141
+init	C:\Data\projects\picsoft\10fblinky\controller\main.asm	48;"	l	line:48
+intensloop	C:\Data\projects\picsoft\10fblinky\controller\main.asm	203;"	l	line:203
+intensloop2	C:\Data\projects\picsoft\10fblinky\controller\main.asm	219;"	l	line:219
+intensloop_dn	C:\Data\projects\picsoft\10fblinky\controller\main.asm	222;"	l	line:222
+intensloop_up	C:\Data\projects\picsoft\10fblinky\controller\main.asm	210;"	l	line:210
+main	C:\Data\projects\picsoft\10fblinky\controller\main.asm	176;"	l	line:176
+sendcmdbyte	C:\Data\projects\picsoft\10fblinky\controller\main.asm	239;"	l	line:239
+start	C:\Data\projects\picsoft\10fblinky\controller\main.asm	32;"	l	line:32
+stop	C:\Data\projects\picsoft\10fblinky\controller\main.asm	282;"	l	line:282
+str_chain	C:\Data\projects\picsoft\10fblinky\controller\main.asm	320;"	l	line:320
+str_main_ver	C:\Data\projects\picsoft\10fblinky\controller\main.asm	312;"	l	line:312
+str_ready	C:\Data\projects\picsoft\10fblinky\controller\main.asm	309;"	l	line:309
+str_sent_cmd	C:\Data\projects\picsoft\10fblinky\controller\main.asm	316;"	l	line:316
+test_adc	C:\Data\projects\picsoft\10fblinky\controller\main.asm	80;"	l	line:80
+test_adc_neg	C:\Data\projects\picsoft\10fblinky\controller\main.asm	98;"	l	line:98
+test_adc_pos	C:\Data\projects\picsoft\10fblinky\controller\main.asm	104;"	l	line:104
+test_adc_show	C:\Data\projects\picsoft\10fblinky\controller\main.asm	108;"	l	line:108
+testy	C:\Data\projects\picsoft\10fblinky\controller\main.asm	44;"	l	line:44

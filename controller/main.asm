@@ -1,9 +1,9 @@
 ; $Id: main.asm,v 1.2 2005/07/31 21:31:31 tgipson Exp $
-; NOTE: This is probably not the most recent version.
 
 
-	list	p=18f4550
-	#include "p18f4550.inc"
+
+	list	p=18f2450
+	#include "p18f2450.inc"
 
 
 
@@ -19,10 +19,10 @@
 ;	org	0x0018
 ;	goto	start
 
-	org	0x200
+	org	0x800
 	goto	start
 
-	org	0x218
+	org	0x818
 	goto	start
 
 ;org	0x4000
@@ -37,7 +37,7 @@ start:
 
 	call	delaybit
 
-	movlw	B'11110011'		; 8MHz
+	movlw	B'00000000'		; 8MHz
 ;	movlw	B'11100000'		; 4MHz
 	movwf	OSCCON
 
@@ -61,12 +61,20 @@ init:
 	movlw	H'00'
 	movwf	INTENS
 
-	movlw	B'11100000'		; "all colors off"
-	movwf	COMMAND
-	call	send1wire
+
+	clrf	INTENS_R
+	clrf	INTENS_G
+	clrf	INTENS_B
+
+
+	;movlw	B'01110000'		; "all colors off"
+	;movwf	COMMAND
+	;call	send1wire
 
 ;	call	chain
-	goto	intensloop
+;	goto	intensloop
+	goto	effecttest
+
 	goto	main
 
 test_adc:
@@ -116,6 +124,55 @@ test_adc_show:
 	goto	test_adc
 
 
+effecttest:
+	call	chain_init
+	sendstring	str_menu
+	sendstring	str_menu_2
+
+
+effecttest2:
+;	call	ui_main_menu_scan
+;	tstfsz	SCRATCH0			; user cmd?
+;	call	sendcmdbyte			; if yes
+	goto	effecttest_doit		; if yes
+
+	goto	effecttest2
+
+effecttest_doit:
+	btg		PORTC, 0
+	call	event_pos
+;	call	effect_set
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+
+	call	event_neg
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+	call	fade
+
+;	call	diffuse
+;	call	fade
+;	movlw	'S'
+;	call	SENDCMNDP2
+;	call	delaysec
+
+	goto	effecttest2
+
+
+
 main:
 	call	ui_show_addr
 	call	ui_main_menu
@@ -124,9 +181,9 @@ main:
 	xorwf	SCRATCH0, w
 	bz		intensloop
 
-	movlw	B'11100000'		; "all colors off"
-	movwf	COMMAND
-	call	send1wire
+;	movlw	B'11100000'		; "all colors off"
+;	movwf	COMMAND
+;	call	send1wire
 
 	movlw	B'00000111'
 	andwf	COLOR
@@ -181,25 +238,41 @@ colorchg:
 
 sendcmdbyte:
 
+	movf	COLOR, w
+	call	sendbin
+	movlw	' '
+	call	SENDCMNDP2
+	call	SENDCMNDP2
 	movf	INTENS, w
-	movwf	COMMAND
+	call	sendbin
+	movlw	' '
+	call	SENDCMNDP2
+	call	SENDCMNDP2
+
+	movf	INTENS, w
+	andlw	B'00001111'
+	movwf	COMMAND		; only valid intensities... ; FIXME: CHECKME: kills 'set group address'?
 	movf	COLOR, w
 	andlw	B'00000111'	; only valid colors...
 	swapf	WREG
-	bcf		STATUS, C
-	rlcf	WREG
+	;bcf	STATUS, C
+	;rlcf	WREG
 	iorwf	COMMAND
-	call	send1wire
-;	sendstring	str_sent_cmd
-;	movf	ADDR, w
-;	call	sendbin
-;	movlw	' '
-;	call	SENDCMNDP2
-;	call	SENDCMNDP2
-;	movf	COMMAND, w
-;	call	sendbin
-;	call	SENDCMNDP2CR
 
+
+;	movlw	B'011110111'
+;	movwf	COMMAND
+	call	send1wire
+	;call	delay_68
+	sendstring	str_sent_cmd
+	movf	ADDR, w
+	call	SENDHEX
+	movlw	' '
+	call	SENDCMNDP2
+	call	SENDCMNDP2
+	movf	COMMAND, w
+	call	sendbin
+	call	SENDCMNDP2CR
 ;	call	delaysec
 
 	return
@@ -225,10 +298,13 @@ stop:
 ;#include	"ui.inc"
 ;#include	"eeprom.inc"
 ;#include	"test.inc"
+#include	"debug.inc"
 #include	"onewire.inc"
 #include	"ui.inc"
 #include	"chain.inc"
 #include	"rand.inc"
+#include	"effects.inc"
+#include	"event.inc"
 
 str_ready:
 	DW	"$Id: main.asm,v I don't know, CVS server is broken... $\r\n\x00"
@@ -242,6 +318,7 @@ str_sent_cmd:
 
 
 str_chain:
-	DW	"\x10\x12\x13\x15\x14\x16\x17\x00"
+	DW	"\x17\x18\x19\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x00"
 
+; \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20
 	end

@@ -252,6 +252,29 @@ delay20_1:
 	goto	delay20_1
 	return
 
+delay_10:
+;delayqbit:
+	movlw	H'10'	;40
+	movwf 	WAITER
+
+delay10_1:	
+	decfsz	WAITER
+	goto	delay20_1
+	return
+
+
+delay_8:
+;delayqbit:
+	movlw	H'08'	;40
+	movwf 	WAITER
+
+delay8_1:	
+	decfsz	WAITER
+	goto	delay20_1
+	return
+
+
+
 delay_68:
 ;delayqbit:
 	movlw	D'68'

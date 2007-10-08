@@ -7,10 +7,17 @@
 ui_main_menu:
 	sendstring	str_menu
 	sendstring	str_menu_2
+	sendstring	str_menu_3
 
 	call	GETCMD
 	movwf	SCRATCH0
+	goto	ui_main_menu_2
 
+ui_main_menu_scan:
+	call	SCANCMD
+	movwf	SCRATCH0
+
+ui_main_menu_2:
 	movlw	' '
 	xorwf	SCRATCH0, w
 	bz		ui_inc_color
@@ -63,8 +70,37 @@ ui_main_menu:
 	xorwf	SCRATCH0, w
 	bz		ui_dec_addr
 
+	movlw	'S'
+	xorwf	SCRATCH0, w
+	bz		ui_set_full
+
+	movlw	'N'
+	xorwf	SCRATCH0, w
+	bz		ui_set_none
+
+	movlw	'X'
+	xorwf	SCRATCH0, w
+	bz		ui_set_event
+
+	movlw	'Z'
+	xorwf	SCRATCH0, w
+	bz		ui_clear_event
+
 	return
 
+;	movlw	'r'
+;	xorwf	SCRATCH0, w
+;	bz		ui_inc_r
+;
+;	movlw	'g'
+;	xorwf	SCRATCH0, w
+;	bz		ui_inc_g
+;
+;	movlw	'b'
+;	xorwf	SCRATCH0, w
+;	bz		ui_inc_b
+;	return
+;
 
 ui_inc_color:
 	incf	COLOR
@@ -75,11 +111,11 @@ ui_toggle_r:
 	return
 
 ui_toggle_g:
-	btg		COLOR, 0
+	btg		COLOR, 1
 	return
 
 ui_toggle_b:
-	btg		COLOR, 1
+	btg		COLOR, 0
 	return
 
 ui_intens_up:
@@ -135,13 +171,100 @@ ui_set_grp_addr:
 	call	SENDCMNDP2		; local echo
 	call	ASCII2HEX		; char[2] to byte, in WREG
 	andlw	B'00001111'		; low nibble only
-	iorlw	B'00010000'		; set Extended Command bit (cmd is 000)
+	iorlw	B'10000000'		; set Extended Command bit (cmd is 000)
 	movwf 	COMMAND
 	call	ui_show_packet
 	call	send1wire
 	return
 
+ui_set_event:
+	call	event_pos
+	return
 
+ui_clear_event:
+	call	event_neg
+	return
+
+ui_set_full:
+	lfsr	FSR0, ADDRTBL+1 +3
+	movlw	B'00000111'	; max. + 1
+	movwf	POSTINC0	; R
+	movwf	POSTINC0	; G
+	movwf	POSTINC0	; B
+
+	lfsr	FSR0, ADDRTBL+1+8 +3
+	movlw	B'00000111'	; max. + 1
+	movwf	POSTINC0	; R
+
+	lfsr	FSR0, ADDRTBL+1+D'16'+1 +3
+	movlw	B'00000111'	; max. + 1
+	movwf	POSTINC0	; G
+
+	lfsr	FSR0, ADDRTBL+1+D'24'+2 +3
+	movlw	B'00000111'	; max. + 1
+	movwf	POSTINC0	; B
+
+	return
+
+ui_set_none:
+	lfsr	FSR0, ADDRTBL+1 +3
+	movlw	B'00000000'	; 
+	movwf	POSTINC0	; R
+	movwf	POSTINC0	; G
+	movwf	POSTINC0	; B
+
+	lfsr	FSR0, ADDRTBL+1+8 +3
+	movlw	B'00000000'	; 
+	movwf	POSTINC0	; R
+	movwf	POSTINC0	; G
+	movwf	POSTINC0	; B
+
+	lfsr	FSR0, ADDRTBL+1+D'16'+3
+	movlw	B'00000000'	; 
+	movwf	POSTINC0	; R
+	movwf	POSTINC0	; G
+	movwf	POSTINC0	; B
+
+	lfsr	FSR0, ADDRTBL+1+D'24' +3
+	movlw	B'00000000'	; 
+	movwf	POSTINC0	; R
+	movwf	POSTINC0	; G
+	movwf	POSTINC0	; B
+
+	return
+
+
+
+; --------------------------
+ui_inc_r:
+	incf	INTENS_R
+	goto	ui_inc_color_x
+
+ui_inc_g:
+	incf	INTENS_G
+	goto	ui_inc_color_x
+
+ui_inc_b:
+	incf	INTENS_B
+	goto	ui_inc_color_x
+
+ui_inc_color_x:
+	clrf	COLOR
+	bsf		COLOR, 2
+	movff	INTENS_R, INTENS
+	call	sendcmdbyte
+
+	clrf	COLOR
+	bsf		COLOR, 1
+	movff	INTENS_G, INTENS
+	call	sendcmdbyte
+
+	clrf	COLOR
+	bsf		COLOR, 0
+	movff	INTENS_B, INTENS
+	call	sendcmdbyte
+	clrf	COLOR
+	return
 ; --------------------------
 
 ui_show_addr:
@@ -167,7 +290,10 @@ ui_show_packet:
 str_menu:
 	DW	"<space> change color \r\n+       brightness up\r\n-       brightness down\r\nR/G/B   toggle color\r\n* and / change addr up or down\r\n\x00"
 str_menu_2:
-	DW	"A		set explicit address\r\nE		set target's group address\r\n\r\n\x00"	
+	DW	"A	set explicit address\r\nE	set target's group address\r\n\r\n\x00"	
+str_menu_3:
+	DW	"r	inc red only\r\ng	inc green only\r\nb	inc blue only\r\n\x00"
+
 
 str_addr:
 	DW	"Addr: \x00"

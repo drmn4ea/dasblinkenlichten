@@ -80,6 +80,7 @@ SENDCMNDP2CR:
 	return
 
 ; ---------------------------------------------
+getcmd:
 GETCMD:
 	btfss	PIR1, RCIF					; byte received on USART?
 	goto	GETCMD						; if no
@@ -90,9 +91,17 @@ GETCMD:
 
 ; ---------------------------------------------
 ; Return 0xFF if byte received, else 0x00
-
+iscmd:
 ISCMD:
 	btfss	PIR1, RCIF
 	retlw	H'00'
 	movf	RCREG, 0
 	retlw	H'FF'
+
+; ---------------------------------------------
+
+SCANCMD:
+	btfss	PIR1, RCIF
+	retlw	H'00'
+	movf	RCREG, 0
+	return
