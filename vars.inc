@@ -1,4 +1,5 @@
-; Vars
+; $Id: $
+; Memory register definitions for Blinkenlichten
 
 
 	cblock	0x10
