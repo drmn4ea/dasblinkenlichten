@@ -1,8 +1,9 @@
-; $Id: main.asm,v 1.6 2007/10/08 19:39:56 tgipson Exp $
+; $Id: main.asm,v 1.7 2008/02/18 20:26:26 tgipson Exp $
 ;
 ; Das Blinkenlichten: 10F 1-Wire RGB Receiver + Indicator
 
-; Released under the GPL.
+; This software and protocol (source and binaries) are free for non-commercial use. The software may be freely redistributed
+; either in modified or unmodified forms. In all cases the source code and this license text must be included.
 
 
 ; Config bits: WDT ON, MCLR as GP3, CodeProtect OFF.
@@ -17,6 +18,9 @@
 
 ; ----------------------
 
+; Base contents of the OPTION register. OPTION is write-only, so can't do read-modify-write in code. We'll be needing to set/clear individual bits and don't want to hardcode this multiple places.
+#define		OPTION_VALUES	B'11001000'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
+
 	list	p=10f200
 	#include "p10f200.inc"
 
@@ -30,29 +34,49 @@
 
 ; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
 ; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
+;	DT	"$Id: main.asm,v 1.7 2008/02/18 20:26:26 tgipson Exp $"
+; Damn, ate up a bunch of ROM with the >v1 cmds. Just gonna set it by hand in very short form...
 str_version:
-	DT	"$Id: main.asm,v 1.6 2007/10/08 19:39:56 tgipson Exp $"
+	DT "v1.1 tgipson"
 
-
-
-	org	D'64'
+;	org	D'64'
 start:
-	clrwdt
+	andlw	B'11111110'
+	movwf	OSCCAL		; Use factory OSCCAL value from last ROM byte; GP2 on GP2
 ;	movlw	B'01111110'
 ;	movwf	OSCCAL		; disregard calibration and set osc. speed to maximum; GP2 on GP2
 
-	movlw	B'11001000'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
+	movlw	OPTION_VALUES	; see define above
 	OPTION				; store into OPTION reg.
 
+	; Determine how we woke up... WDT can't be shut off in code, so powersave mode is exited by bus activity OR WDT reset.
+;	btfsc	STATUS, GPWUF	; Wakeup on pin change bit set?
+	btfsc	STATUS, 3		; Was power down mode set? PD\ cleared = powerdown mode
+	goto	init			; if we weren't poweredowned: always reset
+	btfss	STATUS, 4		; if WDT timed out - just go back to sleep (TO\ cleared = timeout)
+	goto	poke_reg_0_power_save; if TO\ low
+	goto	awaken			; else - just re-awakening from powersave, do not clear memory contents
+
+
+
+
+
+init:
+	clrwdt				; Can't do this earlier; it resets power-up state bits
 	movlw	B'00000000'	; set all pins as output which can be
 	TRIS	GPIO		; ...
-	clrf	GPIO
+;	clrf	GPIO
 
-	bsf		GPIO, GREEN		; briefly show startup value to show running or reset...
-	bcf		GPIO, BLUE
-	bsf		GPIO, RED
+;	bsf		GPIO, GREEN		; briefly show startup value to show running or reset...
+;	bcf		GPIO, BLUE
+;	bsf		GPIO, RED
+
+	movlw	B'00001110'		; show blue in common-anode; yellow in common-cathode
+	movwf	GPIO
+
 
 	clrf	GROUPADDR		; initial Group 0x00 (none / same as broadcast address)
+	clrf	DEF_VALID		; No deferred update buffers contain valid data
 
 	clrw					; Initially clear PWM intensities
 	#if (COMM_ANODE == 1)	; ...
@@ -61,6 +85,9 @@ start:
 	movwf	PWM_R			;
 	movwf	PWM_G			;
 	movwf	PWM_B			;
+	movwf	DEF_R
+	movwf	DEF_G
+	movwf	DEF_B
 
 debug_hang:		; show long blue to indicate startup and/or sync lost. Change according to how long you want to hang of course...
 	movlw	0x80
@@ -87,6 +114,8 @@ reset_sync_wait1:
 	goto	reset_sync_wait1; if no
 
 							; else - fall through and begin running...
+awaken:
+;	bcf		STATUS, GPWUF	; Clear wakeup-from-pin-change status, if any ; No longer used - testing PD bit instead
 
 main:						; Where it all happens; check for START condition and (if none) advance one color's PWM.
 	clrwdt					; WDT time-out will reset the chip if this loop is not returned to in a timely manner (1-wire framing error, e.g. waiting for a serial bit that never comes)
@@ -218,24 +247,22 @@ processcmd:	; 48 incl. call/return
 
 ; If payload byte was '1xxxxxxx', decode as an Extended command...
 ; 11xxxxxx Set Group Address
-; 10000000 Enter Power Save (not implemented)
-; 10100000 Identify (not implemented)
+; 10XXxxxx Poke virtual reg XX with value xxxx, where...
+; VAddr 00: Flags [x	identify	activate_deferred	power_save]
+; VAddr 01: Defer buf R
+; VAddr 02: Defer buf G
+; VAddr 03: Defer buf B
 
 extcmd:
 
-	movf	INDF, w			; Decode against "Set Group"
-	andlw	B'11000000'		; only highest 2 bits specify the cmd
-	movwf	SCRATCH0		;
 
-	movlw	B'11000000'
-	xorwf	SCRATCH0, w
-	btfsc	STATUS, Z
-	goto	setgroup
-
-	; ... other extended commands here ...
-
+	btfsc	INDF, 6			; Decode against "Set Group"
+	goto	setgroup		; if Set Group bit set
+							; else...
+	btfsc	INDF, 5			; Poke reg is 2 or 3?
+	goto	poke_reg_2_3	; if yes
+	goto	poke_reg_0_1	; else - must be 0 or 1
 	goto	main
-
 
 
 setgroup:
@@ -244,10 +271,90 @@ setgroup:
 	movwf	GROUPADDR		; store remaining bits as group address
 	goto	main			; done
 
+poke_reg_2_3:	; Handle poke regs 2,3
+	btfsc	INDF,4			; poke reg is 3?
+	goto	poke_reg_3		; if yes
+							; else...
+poke_reg_2:					; Setting Green deferred update
+	movf INDF, w
+	andlw	B'00001111'		; only valid values
+	movwf	DEF_G			;
+	bsf		DEF_VALID, GREEN; and mark it as having a valid update
+	goto	main
+
+poke_reg_3:					; Setting Blue deferred update
+	movf INDF, w
+	andlw	B'00001111'		; only valid values
+	movwf	DEF_B			;
+	bsf		DEF_VALID, BLUE	; and mark it as having a valid update
+	goto	main
+
+poke_reg_0_1				; Handle poke regs 0,1
+	btfsc	INDF, 4			; poke reg is 1?
+	goto	poke_reg_1		; if yes
+							; else...
+poke_reg_0:					; Handling Flag bits
+							; Remember each of these virtual regs is only 4 bits long because that's how many were left in the CMD byte to specify its value...
+	; Reg 0 bit 3 is currently unused, so skipping it...
+
+	btfsc	INDF, 2			; Identify?
+	goto	poke_reg_0_identify; if yes
+							; else...
+	btfsc	INDF, 1			; Activate deferred updates?
+	goto	poke_reg_0_activate_def; if yes
+
+							; Power Save will be the last command we check for, since if one of those is coming down the pipe we shouldn't be getting further commands for a while
+	btfss	INDF, 0			; Power Save bit?
+	goto	main			; if no - that's all of them!
 
 
+poke_reg_0_identify:
+	; FIXME: Writeme
+	movlw	OPTION_VALUES	; get initial OPTION contents (hardcoded)
+	andlw	B'10111111'		; enable weak pullups (GP3/SDI) by clearing bit 6
+	OPTION	
+	clrf	SCRATCH0
+identify_timer:	; count to a bunch...
+	clrwdt
+	decfsz	SCRATCH0,f		; done counting?
+	goto	identify_timer	; if no
+							; else...
+	movlw	OPTION_VALUES	; re-get initial contents
+	OPTION					; set everything back to normal
+identify_wait:				; Wait until freshly dropped line returns to '0' state. Could be slow to drop with large pulldown
+	btfsc	GPIO, SDI		; or with some other device still holding it up.
+	goto	identify_wait	; if line still high
+	goto	main			; else
+
+poke_reg_0_activate_def:	; A longer command than most to accomplish; might want to delay following cmds a few ms...
+	movlw	DEF_R			; point INDF to *address* of DEF_R
+	movwf	FSR
+	btfsc	DEF_VALID, RED
+	call	processcmd_r
+	incf	FSR, f			; pointing to DEF_G
+	btfsc	DEF_VALID, GREEN
+	call	processcmd_g
+	incf	FSR, f			; pointing to DEF_B
+	btfsc	DEF_VALID, BLUE
+	call	processcmd_b
+	clrf	DEF_VALID		; activated all; updates are no longer new
+	goto	main			; done! FIXME: Count the clocks on this...
+
+poke_reg_0_power_save:		; For best results, this should be sent on addr 0 following globally setting all intensities to 0. Otherwise you aren't saving much power, and the next cmd will wake everyone up...
+	movlw	OPTION_VALUES	; get initial OPTION contents (hardcoded)
+	andlw	B'01111111'		; enable Wakeup on Change by clearing bit 7
+	OPTION					; write new contents
+	movf	GPIO, w			; dummy read of I/O port to set clear any existing 'changes'
+	sleep					; sleep...
+;	goto	main			; should never be reached; PIC10s reset on wakeup
 
 
+poke_reg_1:					; Setting Red deferred update
+	movf INDF, w
+	andlw	B'00001111'		; only valid values
+	movwf	DEF_R			;
+	bsf		DEF_VALID, RED	; and mark it as having a valid update
+	goto	main
 
 ; ---------------------------------------------------
 ; Process command byte in buffer for the given color
@@ -300,7 +407,7 @@ setpwm:
 	retlw	B'11111111' ; 0x0D
 	retlw	B'11111111' ; 0x0E
 	retlw	B'11111111' ; 0x0F
-	retlw	0x00		; pure paranoia
+;	retlw	0x00		; pure paranoia
 
 ; ---------------------------------------------------
 ; Perform one iteration/rotation of "poor man's PWM" for each color's register
@@ -428,24 +535,38 @@ pwm_b:
 
 ; --- Extended Commands ---
 ; 11xxxxxx : Set Group Addr to value xxxx
-; 10000001 : Enter Power Save (not yet implemented)
-; 10000100 : Identify (pull-up bus in response if own ID is called) (not yet implemented)
+; 10XXxxxx : Poke "Virtual reg" XX with contents xxxx (see below), where XX is the address of a virtual 4-bit reg and xxxx is the value to poke.
 
-; Would be nice to have 'deferred update' cmd that writes the new RGB data into shadow registers but doesn't display it yet.
-; A second, 'activate deferred' command would trigger all nodes with deferred data to show it at once. This would allow for instantaneous
-; 'page flips' in scenarios with a large number of nodes, e.g. billboard displays. Currently this would require a special decoding of
-; the RGB 'affected' portion of the cmd because 11XXxxxx is already reserved to set Group Address. 10XXxxxx might be an option where
-; XX is a value from 1 to 3 and only sets one color at a time (where XX cannot be 00), with a separate code to activate the stored values.
 
-; Maybe change above cmds to... 10XXxxxx: Poke Reg, where XX is the address of a virtual 4-bit reg and xxxx is the value to poke.
-; VAddr 00: Flags [x	identify	activate_deferred	power_save]
-; VAddr 01: Defer buf R
-; VAddr 02: Defer buf G
-; VAddr 03: Defer buf B
+; Vreg 00: Flags [x	identify	activate_deferred	power_save]
+; Vreg 01: Defer buf R
+; Vreg 02: Defer buf G
+; Vreg 03: Defer buf B
 
+; Detailed description of the virtual registers:
+
+; Vreg 01 ~ 03 allow a deferred update to be sent for the R, G and B channel respectively. The new intensity value(s) are stored in the 
+; appropriate register(s), but the old intensity values continue to be displayed until an activate_deferred command is executed, at which point
+; the new intensities are displayed. This will be particularly useful for trickling new values over the bus, then sending a single activate_deferred
+; to all devices (addr 0) to give the appearance of a simultaneous update.
+
+; Vreg 00 is a virtual register among virtual register. Rather than writing a value to it, you write to it setting an individual bit to
+; performs the requested action. Once the action is performed, the bit can be considered automatically cleared.
+;	* Unused (bit 3): Doesn't do anything.
+; 	* Identify (bit 2): On receipt of this cmd by a given device address, this device shall pull the data line HIGH (internal weak pull-up)
+;		for a period of about 512 device clocks (or whatever, plenty long enough for master device to see it). Normal operation is then resumed.
+;		Note that this may disrupt other devices on the bus, who interpret the pullup signal as a new START command. If this is bothersome an
+;  		Identify command may be followed by a startless dummy command if a device responds.
+;	* Activate_deferred: Replaces the currently displayed intensities with the contents of the Defer (R,G,B) regs if they contain a valid update.
+;	* Power_save: This command will (hopefully) stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
+;		SLEEP mode until the next bus activity occurs, at which point it will re-awaken. Technically it will be waking up frequently due to WDT, but
+;		these activity periods will be brief.
+
+; Ok, so the protocol as shown leaves only 1 bit unused.
 ; Definitely painting ourselves into a corner, but might be able to squeak out a little more functionality by making that topmost flags bit
 ; a 'Use Indirection' flag that changes one of the existing VADDRs to a pointer to a numbered register, or even to a full register bank.
-; This then gives 16 possible registers for each VADDR (this capacity exceeds the RAM available on the chip we're currently using!)
+; This then gives 16 possible registers for each VADDR, but packing any further functionalities onto PIC10F200 would be challenging at best.
+; Therefore, I think the above protocol definition is OK as-is, and any bigger chip will use a more robust 2-wire (clk,data) serial and its own protocol.
 
 
 #include "vars.inc"		; Memory map
