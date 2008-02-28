@@ -1,9 +1,18 @@
-; $Id: main.asm,v 1.7 2008/02/18 20:26:26 tgipson Exp $
+; $Id: main.asm,v 1.8 2008/02/19 05:48:41 tgipson Exp $
 ;
-; Das Blinkenlichten: 10F 1-Wire RGB Receiver + Indicator
-
-; This software and protocol (source and binaries) are free for non-commercial use. The software may be freely redistributed
+; Das Blinkenlichten: 1-Wire RGB Receiver + Indicator, optimized for wearable applications
+; (c) 2008 T. R. Gipson
+; http://tim.cexx.org/?page_id=374
+; This software and protocol (source and binaries) are free for non-commercial use. The source code may be freely redistributed
 ; either in modified or unmodified forms. In all cases the source code and this license text must be included.
+
+
+; Version History:
+; v0.x (2005) Nora Nightlight edition. Quick n dirty hack with hardcoded timer to distinguish 1/0 data bits. Set Group Address is the only valid extended command. Didn't get around to touching it again for a long time.
+; v1.0 (2007) Beloved edition, demoed at VNV Nation concert April 07. Changed from fixed-frequency to variable baudrate data encodeing/decoding; re-ordered some bits in the command packet format to make more sense.
+; v1.1 (2008) Proper edition; first public release. Implemented remaining Extended commands: power save mode, deferred update stuff, and device identification.
+
+; ----------------------
 
 
 ; Config bits: WDT ON, MCLR as GP3, CodeProtect OFF.
@@ -19,28 +28,29 @@
 ; ----------------------
 
 ; Base contents of the OPTION register. OPTION is write-only, so can't do read-modify-write in code. We'll be needing to set/clear individual bits and don't want to hardcode this multiple places.
-#define		OPTION_VALUES	B'11001000'	; wakeup-on-change DISabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
+#define		OPTION_VALUES	B'01001000'	; wakeup-on-change ENabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
 
 	list	p=10f200
 	#include "p10f200.inc"
 
 
 
-	org 0x00			; effective reset vector
+	org 0x00			; effective reset vector. Real reset vector is the last byte of code memory, which should contain a RETLW xx instruction where xx is an oscillator calibration value.
 	goto	start
 
 	; First 64 bytes and last byte (osc. calibration word) are readable regardless of CodeProtect bits, so
 	; put the revision there so we always have it, even if these bits get set.
+	; Since the addition of the v1.1 cmds, the CVS string is much too long to put here, so adding a very short 'by hand' string instead.
+	; (That's OK, the CVS string doesn't accurately reflect real version, since I compulsively commit it every time I change e.g. the device ID
+	; and the file gets a red 'modified' mark...
 
-; NOTES: This eats almost 1/4 of the code space; remove or shorten if things get tight.
-; 'DT' stores in a (1 byte -> 1 word) readable format; probably decodes as RETLW xx
-;	DT	"$Id: main.asm,v 1.7 2008/02/18 20:26:26 tgipson Exp $"
-; Damn, ate up a bunch of ROM with the >v1 cmds. Just gonna set it by hand in very short form...
 str_version:
 	DT "v1.1 tgipson"
 
-;	org	D'64'
 start:
+	; NOTE: These first few registers get reinitialized to defaults on ANY device Reset (including wakeup from SLEEP),
+	; so we have to explicitly set them on any kind of startup.
+
 	andlw	B'11111110'
 	movwf	OSCCAL		; Use factory OSCCAL value from last ROM byte; GP2 on GP2
 ;	movlw	B'01111110'
@@ -49,45 +59,45 @@ start:
 	movlw	OPTION_VALUES	; see define above
 	OPTION				; store into OPTION reg.
 
-	; Determine how we woke up... WDT can't be shut off in code, so powersave mode is exited by bus activity OR WDT reset.
-;	btfsc	STATUS, GPWUF	; Wakeup on pin change bit set?
+	movlw	B'00000000'	; set all pins as output which can be
+	TRIS	GPIO		; ...
+
+
+
+	; Now that that's out of the way, determine how we woke up... 
+	; WDT can't be shut off in code, so we check for both pin-change wakeup and WDT-wakeup-from-SLEEP.
+	; In the latter case, branch immediately back to the powersave to execute SLEEP again, in effect hitting the snooze button
+	
+	btfsc	STATUS, GPWUF	; Wakeup on pin change bit set?
+	goto	awaken			; if yes - just re-awakening from powersave, do not clear memory contents
+;
 	btfsc	STATUS, 3		; Was power down mode set? PD\ cleared = powerdown mode
-	goto	init			; if we weren't poweredowned: always reset
-	btfss	STATUS, 4		; if WDT timed out - just go back to sleep (TO\ cleared = timeout)
-	goto	poke_reg_0_power_save; if TO\ low
-	goto	awaken			; else - just re-awakening from powersave, do not clear memory contents
-
-
-
-
+	goto	init			; if we weren't poweredowned: always fully reset
+	goto	poke_reg_0_power_save; else - only remaining option is that WDT timed out while waiting for bus activity. Back to sleep...
 
 init:
 	clrwdt				; Can't do this earlier; it resets power-up state bits
-	movlw	B'00000000'	; set all pins as output which can be
-	TRIS	GPIO		; ...
-;	clrf	GPIO
 
-;	bsf		GPIO, GREEN		; briefly show startup value to show running or reset...
-;	bcf		GPIO, BLUE
-;	bsf		GPIO, RED
-
-	movlw	B'00001110'		; show blue in common-anode; yellow in common-cathode
+	movlw	B'00001011'		; Brief initial "i'm not dead" pulse: show blue in common-anode; yellow in common-cathode
 	movwf	GPIO
 
 
 	clrf	GROUPADDR		; initial Group 0x00 (none / same as broadcast address)
 	clrf	DEF_VALID		; No deferred update buffers contain valid data
 
+	#if (COMM_ANODE == 0)	; ...
 	clrw					; Initially clear PWM intensities
+	#endif					; ...
 	#if (COMM_ANODE == 1)	; ...
 	movlw	B'11111111'		; for common-anode, '1' (voltage) on the port extinguishes the LED.
 	#endif					; ...
+
 	movwf	PWM_R			;
 	movwf	PWM_G			;
 	movwf	PWM_B			;
-	movwf	DEF_R
-	movwf	DEF_G
-	movwf	DEF_B
+	movwf	DEF_R			; Just being unnecessary anal; these don't really need to be initialized
+	movwf	DEF_G			; as their respective DEF_VALID bit won't get set unless new data is written to them
+	movwf	DEF_B			; ...
 
 debug_hang:		; show long blue to indicate startup and/or sync lost. Change according to how long you want to hang of course...
 	movlw	0x80
@@ -100,6 +110,11 @@ debug_hang_outer:
 	decfsz	COUNT, f
 	goto	debug_hang_outer
 
+	; In the event of a communications glitch (i.e. framing error) we may lose track of where we are in the command/data bytes coming down the wire.
+	; If this happens, we'll soon (~18ms) be reset by the WDT, which isn't cleared inside the bit-receive loops.
+	; In this case we want to ignore the bus until the next STOP/START condition can be identified with some certainty, so we don't start receiving
+	; in the middle of a byte and end up right back askew again. So, wait for data line to go low and stay low for one timer rollover.
+	; It's definitely the lazy way out, but it's cheap (codespace) and reliable. Unfortunately it may take a while to resync on a very saturated bus.
 
 reset_sync:					; Sync with extended STOP condition (bus idle)
 	btfsc	GPIO, SDI		; SDI low?
@@ -115,8 +130,6 @@ reset_sync_wait1:
 
 							; else - fall through and begin running...
 awaken:
-;	bcf		STATUS, GPWUF	; Clear wakeup-from-pin-change status, if any ; No longer used - testing PD bit instead
-
 main:						; Where it all happens; check for START condition and (if none) advance one color's PWM.
 	clrwdt					; WDT time-out will reset the chip if this loop is not returned to in a timely manner (1-wire framing error, e.g. waiting for a serial bit that never comes)
 	btfsc	GPIO, SDI		; start bit?
@@ -139,12 +152,12 @@ main:						; Where it all happens; check for START condition and (if none) advan
 ; ASSUMPTION: Start condition is long enough that the longest possible complete loop will still get us back here in time to catch it.
 
 getcmd:
-	movlw	CMDBUF			; init buffer ptr
-	movwf	FSR				;
+	movlw	CMDBUF				; init buffer ptr
+	movwf	FSR					;
 
 getstartbit:
-	btfsc	GPIO, SDI		; spinlock until start condition released
-	goto	getstartbit		; ...
+	btfsc	GPIO, SDI			; spinlock until start condition released
+	goto	getstartbit			; ...
 
 getbyte1:
 	clrf	TMR0				; begin timing low half of bit
@@ -152,7 +165,7 @@ getbyte1:
 	movwf	COUNT				;
 
 getbit_firsthalf:
-	call	pwmjump					; ONCE, in dead time. Helps reduce flicker during saturated bus condition, at the expense of max. bus speed... 18 clocks including call/return
+	call	pwmjump				; ONCE, in dead time. Helps reduce flicker during saturated bus condition, at the expense of max. bus speed... 18 clocks including call/return
 getbit_firsthalf_end:
 	btfss	GPIO, SDI			; wait for SDI to go high - has it?
 	goto	getbit_firsthalf_end; if no
@@ -165,7 +178,7 @@ getbit_secondhalf:
 
 	movf	TMR0, w				; get timer's value
 	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
-	clrf	TMR0				; begin timing low half of bit. We know it's longer than a few clocks, plenty of time to...
+	clrf	TMR0				; begin timing low half of next bit. We know it's longer than a few clocks, plenty of time to...
 	rlf		SCRATCH0,f			; rotate MSB of stored TMR0 into 'C'arry (don't care about other bits)
 	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
 
@@ -173,7 +186,7 @@ getbit_secondhalf:
 	goto	getbit_firsthalf	; if no - wait for next
 								; else - fall through and begin 2nd byte of cmd...
 
-	clrf	TMR0				; begin timing low half of bit
+	;clrf	TMR0				; begin timing low half of bit
 	incf	FSR,f				; point to 2nd buffer byte
 
 getbyte2:
@@ -194,7 +207,7 @@ getbit_secondhalf2:
 
 	movf	TMR0, w				; get timer's value
 	movwf	SCRATCH0			; .. to scratch reg (ghetto chip doesn't allow operation on WREG..?)
-	clrf	TMR0				; begin timing low half of bit
+	clrf	TMR0				; begin timing low half of next bit
 	rlf		SCRATCH0,f			; rotate MSB of stored TMR0 into 'C'arry (don't care about other bits)
 	rlf		INDF,f				; shift bit in 'C'arry into currently-addressed buffer position
 
@@ -246,24 +259,20 @@ processcmd:	; 48 incl. call/return
 
 
 ; If payload byte was '1xxxxxxx', decode as an Extended command...
-; 11xxxxxx Set Group Address
-; 10XXxxxx Poke virtual reg XX with value xxxx, where...
+; 11xxxxxx Set Group Address to xxxxxx
+; 10XXxxxx Poke virtual reg address XX with value xxxx, where...
 ; VAddr 00: Flags [x	identify	activate_deferred	power_save]
 ; VAddr 01: Defer buf R
 ; VAddr 02: Defer buf G
 ; VAddr 03: Defer buf B
 
 extcmd:
-
-
 	btfsc	INDF, 6			; Decode against "Set Group"
 	goto	setgroup		; if Set Group bit set
 							; else...
 	btfsc	INDF, 5			; Poke reg is 2 or 3?
 	goto	poke_reg_2_3	; if yes
 	goto	poke_reg_0_1	; else - must be 0 or 1
-	goto	main
-
 
 setgroup:
 	movf	INDF, w
@@ -306,10 +315,18 @@ poke_reg_0:					; Handling Flag bits
 							; Power Save will be the last command we check for, since if one of those is coming down the pipe we shouldn't be getting further commands for a while
 	btfss	INDF, 0			; Power Save bit?
 	goto	main			; if no - that's all of them!
+							; else, fall through...
+
+poke_reg_0_power_save:		; For best results, this should be sent on addr 0 following globally setting all intensities to 0. Otherwise you aren't saving much power, and the next cmd will wake everyone up...
+	movlw	OPTION_VALUES	; get initial OPTION contents (hardcoded)
+	iorlw	B'00000111'		; We can't kill WDT entirely, but can set WDT prescaler as slow as possible
+	OPTION					; write new contents
+	movf	GPIO, w			; dummy read of I/O port to set clear any existing 'changes'
+	sleep					; sleep...
+;	goto	main			; should never be reached; PIC10s reset on wakeup
 
 
 poke_reg_0_identify:
-	; FIXME: Writeme
 	movlw	OPTION_VALUES	; get initial OPTION contents (hardcoded)
 	andlw	B'10111111'		; enable weak pullups (GP3/SDI) by clearing bit 6
 	OPTION	
@@ -320,15 +337,16 @@ identify_timer:	; count to a bunch...
 	goto	identify_timer	; if no
 							; else...
 	movlw	OPTION_VALUES	; re-get initial contents
-	OPTION					; set everything back to normal
-identify_wait:				; Wait until freshly dropped line returns to '0' state. Could be slow to drop with large pulldown
-	btfsc	GPIO, SDI		; or with some other device still holding it up.
+	OPTION					; set everything back to normal (disable pullups)
+identify_wait:				; Wait until freshly dropped line returns to '0' state. Could be slow to drop with sufficiently weak pulldown
+	clrwdt
+	btfsc	GPIO, SDI		; ...or with some other device still holding it up.
 	goto	identify_wait	; if line still high
 	goto	main			; else
 
 poke_reg_0_activate_def:	; A longer command than most to accomplish; might want to delay following cmds a few ms...
 	movlw	DEF_R			; point INDF to *address* of DEF_R
-	movwf	FSR
+	movwf	FSR				; ...
 	btfsc	DEF_VALID, RED
 	call	processcmd_r
 	incf	FSR, f			; pointing to DEF_G
@@ -339,14 +357,6 @@ poke_reg_0_activate_def:	; A longer command than most to accomplish; might want 
 	call	processcmd_b
 	clrf	DEF_VALID		; activated all; updates are no longer new
 	goto	main			; done! FIXME: Count the clocks on this...
-
-poke_reg_0_power_save:		; For best results, this should be sent on addr 0 following globally setting all intensities to 0. Otherwise you aren't saving much power, and the next cmd will wake everyone up...
-	movlw	OPTION_VALUES	; get initial OPTION contents (hardcoded)
-	andlw	B'01111111'		; enable Wakeup on Change by clearing bit 7
-	OPTION					; write new contents
-	movf	GPIO, w			; dummy read of I/O port to set clear any existing 'changes'
-	sleep					; sleep...
-;	goto	main			; should never be reached; PIC10s reset on wakeup
 
 
 poke_reg_1:					; Setting Red deferred update
@@ -521,7 +531,7 @@ pwm_b:
 
 ; The bus idles low.
 
-; Start condition: Bus goes HIGH and lasts for longer than the longest possible loop run, so that all devices are guaranteed to catch it.
+; Start condition: Bus goes HIGH and stays high for longer than the longest possible loop run, so that all devices are guaranteed to catch it.
 ; Data bits consist of a low period (low half) followed by a high period (high half). A 0 is denoted by making the LOW half longer than the HIGH half,
 ;   and a 1 by making the HIGH half longer. Ideally, all bits should total the same length, but since the low half sets the baud rate on a bit-per-bit basis,
 ;   this is not required. However, the low half should be a minimum 18 device clocks (18/1MHz=18uS) for most accurate timing, 
@@ -534,7 +544,7 @@ pwm_b:
 ; E: Extended Command flag. If '1', decode remaining bits as Extended Cmd as described below...
 
 ; --- Extended Commands ---
-; 11xxxxxx : Set Group Addr to value xxxx
+; 11xxxxxx : Set Group Addr to value xxxxxx
 ; 10XXxxxx : Poke "Virtual reg" XX with contents xxxx (see below), where XX is the address of a virtual 4-bit reg and xxxx is the value to poke.
 
 
@@ -550,16 +560,16 @@ pwm_b:
 ; the new intensities are displayed. This will be particularly useful for trickling new values over the bus, then sending a single activate_deferred
 ; to all devices (addr 0) to give the appearance of a simultaneous update.
 
-; Vreg 00 is a virtual register among virtual register. Rather than writing a value to it, you write to it setting an individual bit to
-; performs the requested action. Once the action is performed, the bit can be considered automatically cleared.
+; Vreg 00 is a virtual register among virtual registers: Rather than writing a value to it, you write to it setting an individual bit to
+; perform the requested action. Once the action is performed, the bit can be considered automatically cleared.
 ;	* Unused (bit 3): Doesn't do anything.
 ; 	* Identify (bit 2): On receipt of this cmd by a given device address, this device shall pull the data line HIGH (internal weak pull-up)
 ;		for a period of about 512 device clocks (or whatever, plenty long enough for master device to see it). Normal operation is then resumed.
 ;		Note that this may disrupt other devices on the bus, who interpret the pullup signal as a new START command. If this is bothersome an
 ;  		Identify command may be followed by a startless dummy command if a device responds.
-;	* Activate_deferred: Replaces the currently displayed intensities with the contents of the Defer (R,G,B) regs if they contain a valid update.
-;	* Power_save: This command will (hopefully) stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
-;		SLEEP mode until the next bus activity occurs, at which point it will re-awaken. Technically it will be waking up frequently due to WDT, but
+;	* Activate_deferred (bit 1): Replaces the currently displayed intensities with the contents of the Defer (R,G,B) regs if they contain a valid update.
+;	* Power_save (bit 0): This command will (hopefully) stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
+;		SLEEP mode until the next bus activity occurs, at which point it will re-awaken. Technically it will be waking up occasionally due to WDT, but
 ;		these activity periods will be brief.
 
 ; Ok, so the protocol as shown leaves only 1 bit unused.
