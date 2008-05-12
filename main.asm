@@ -1,16 +1,19 @@
-; $Id: main.asm,v 1.8 2008/02/19 05:48:41 tgipson Exp $
+; $Id: main.asm,v 1.9 2008/02/28 05:43:19 tgipson Exp $
 ;
 ; Das Blinkenlichten: 1-Wire RGB Receiver + Indicator, optimized for wearable applications
-; (c) 2008 T. R. Gipson
-; http://tim.cexx.org/?page_id=374
-; This software and protocol (source and binaries) are free for non-commercial use. The source code may be freely redistributed
-; either in modified or unmodified forms. In all cases the source code and this license text must be included.
+; (c) 2005 - 2008 T. R. Gipson (Drmn4ea)
+; http://tim.cexx.org/?page_id=374  // drmn4ea "at" Google's free webmail service
+; This software and protocol (source and binaries) are free for non-commercial use. Commercial use is defined as selling products
+; which contain this code. (Use in incidentally commercial settings, e.g. art installations and public performances is not restricted.)
+; The source code may be freely redistributed either in modified or unmodified forms. In all cases the source code and this license 
+; text must be included.
 
 
 ; Version History:
 ; v0.x (2005) Nora Nightlight edition. Quick n dirty hack with hardcoded timer to distinguish 1/0 data bits. Set Group Address is the only valid extended command. Didn't get around to touching it again for a long time.
 ; v1.0 (2007) Beloved edition, demoed at VNV Nation concert April 07. Changed from fixed-frequency to variable baudrate data encodeing/decoding; re-ordered some bits in the command packet format to make more sense.
 ; v1.1 (2008) Proper edition; first public release. Implemented remaining Extended commands: power save mode, deferred update stuff, and device identification.
+; v1.2 (2008) Improved handling of IDentify cmd; now can avoid flashes during identify as non-responding devices on the bus reset. Compatibility with v1.1 devices is not affected.
 
 ; ----------------------
 
@@ -19,13 +22,20 @@
 
 
 ; ----------------------
+; User-modifiable settings
 
-#define		MYADDR		0x01		; Personalized address to be stored in THIS chip. Each chip on the bus
+#define		MYADDR		0x1a		; Personalized address to be stored in THIS chip. Each chip on the bus
 									; must have a unique address to be controlled independently...
 
 #define		COMM_ANODE	0x01		; If indicator is common-anode, polarity of output drive and idle are inverted
 
+RED		equ	0	; Change to GPIO pin the red LED is connected to.
+GREEN	equ	2	; Change to GPIO pin the green LED is connected to.
+BLUE	equ	1	; Change to GPIO pin the blue LED is connected to.
+
 ; ----------------------
+
+
 
 ; Base contents of the OPTION register. OPTION is write-only, so can't do read-modify-write in code. We'll be needing to set/clear individual bits and don't want to hardcode this multiple places.
 #define		OPTION_VALUES	B'01001000'	; wakeup-on-change ENabled, pullups DISabled, timer0 clk internal, source edge low-to-high (don't care), prescaler assigned to WDT, /1
@@ -45,7 +55,7 @@
 	; and the file gets a red 'modified' mark...
 
 str_version:
-	DT "v1.1 tgipson"
+	DT "v1.2 tgipson"
 
 start:
 	; NOTE: These first few registers get reinitialized to defaults on ANY device Reset (including wakeup from SLEEP),
@@ -78,7 +88,7 @@ start:
 init:
 	clrwdt				; Can't do this earlier; it resets power-up state bits
 
-	movlw	B'00001011'		; Brief initial "i'm not dead" pulse: show blue in common-anode; yellow in common-cathode
+	movlw	B'00001011'		; Brief initial "i'm not dead" pulse: show blue in common-anode; yellow in common-cathode (depends on LED pinout)
 	movwf	GPIO
 
 
@@ -338,11 +348,12 @@ identify_timer:	; count to a bunch...
 							; else...
 	movlw	OPTION_VALUES	; re-get initial contents
 	OPTION					; set everything back to normal (disable pullups)
-identify_wait:				; Wait until freshly dropped line returns to '0' state. Could be slow to drop with sufficiently weak pulldown
-	clrwdt
-	btfsc	GPIO, SDI		; ...or with some other device still holding it up.
-	goto	identify_wait	; if line still high
-	goto	main			; else
+	goto	main			; Assume no other device is tying up the bus due to duplicated address, etc. (or won't be for much longer)
+							;   Our Id response will be interpreted as a START condition by everyone else on the bus, so the best way to
+							;   handle this is for the master to start some no-op cmd before the line drops, extending the Id response
+							;   into its START condition.
+
+
 
 poke_reg_0_activate_def:	; A longer command than most to accomplish; might want to delay following cmds a few ms...
 	movlw	DEF_R			; point INDF to *address* of DEF_R
@@ -568,7 +579,7 @@ pwm_b:
 ;		Note that this may disrupt other devices on the bus, who interpret the pullup signal as a new START command. If this is bothersome an
 ;  		Identify command may be followed by a startless dummy command if a device responds.
 ;	* Activate_deferred (bit 1): Replaces the currently displayed intensities with the contents of the Defer (R,G,B) regs if they contain a valid update.
-;	* Power_save (bit 0): This command will (hopefully) stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
+;	* Power_save (bit 0): This command will effectively stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
 ;		SLEEP mode until the next bus activity occurs, at which point it will re-awaken. Technically it will be waking up occasionally due to WDT, but
 ;		these activity periods will be brief.
 
