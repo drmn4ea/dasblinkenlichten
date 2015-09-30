@@ -1,20 +1,30 @@
-; $Id: main.asm,v 1.9 2008/02/28 05:43:19 tgipson Exp $
+; $Id: main.asm,v 1.1 2009/12/14 06:10:34 tgipson Exp $
 ;
-; Das Blinkenlichten: 1-Wire RGB Receiver + Indicator, optimized for wearable applications
-; (c) 2005 - 2008 T. R. Gipson (Drmn4ea)
+; Das Blinkenlichten: 1-Wire RGB Receiver + Indicator, optimized for low cost and wearable applications
+; (c) 2005, 2007, 2008, 2009 T. R. Gipson (Drmn4ea)
 ; http://tim.cexx.org/?page_id=374  // drmn4ea "at" Google's free webmail service
-; This software and protocol (source and binaries) are free for non-commercial use. Commercial use is defined as selling products
-; which contain this code. (Use in incidentally commercial settings, e.g. art installations and public performances is not restricted.)
-; The source code may be freely redistributed either in modified or unmodified forms. In all cases the source code and this license 
-; text must be included.
+;
+;    This program is free software: you can redistribute it and/or modify
+;    it under the terms of the GNU General Public License as published by
+;    the Free Software Foundation, either version 3 of the License, or
+;    (at your option) any later version.
+;
+;    This program is distributed in the hope that it will be useful,
+;    but WITHOUT ANY WARRANTY; without even the implied warranty of
+;    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;    GNU General Public License for more details.
+;
+;    You should have received a copy of the GNU General Public License
+;    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 ; Version History:
 ; v0.x (2005) Nora Nightlight edition. Quick n dirty hack with hardcoded timer to distinguish 1/0 data bits. Set Group Address is the only valid extended command. Didn't get around to touching it again for a long time.
-; v1.0 (2007) Beloved edition, demoed at VNV Nation concert April 07. Changed from fixed-frequency to variable baudrate data encodeing/decoding; re-ordered some bits in the command packet format to make more sense.
+; v1.0 (2007) Beloved edition, demoed at VNV Nation concert April 07. Changed from fixed-frequency to variable baudrate data encoding/decoding; re-ordered some bits in the command packet format to make more sense.
 ; v1.1 (2008) Proper edition; first public release. Implemented remaining Extended commands: power save mode, deferred update stuff, and device identification.
-; v1.2 (2008) Improved handling of IDentify cmd; now can avoid flashes during identify as non-responding devices on the bus reset. Compatibility with v1.1 devices is not affected.
-
+; v1.2 (2008) More Proper edition. Improved handling of IDentify cmd; now can avoid flashes during identify as non-responding devices on the bus reset. Compatibility with v1.1 devices is not affected.
+; v1.3 (2009) It's Log edition. Implemented logorithmic intensity scale to linearize apparent brightness, at the expense of some idiot-proofing (out of ROM!)
+;				As part of the codespace limitation, DEF_VALID is not cleared on startup, invalid intensity values will crash; version string removed from binary.
 ; ----------------------
 
 
@@ -24,7 +34,7 @@
 ; ----------------------
 ; User-modifiable settings
 
-#define		MYADDR		0x1a		; Personalized address to be stored in THIS chip. Each chip on the bus
+#define		MYADDR		0xae		; Personalized address to be stored in THIS chip. Each chip on the bus
 									; must have a unique address to be controlled independently...
 
 #define		COMM_ANODE	0x01		; If indicator is common-anode, polarity of output drive and idle are inverted
@@ -46,7 +56,7 @@ BLUE	equ	1	; Change to GPIO pin the blue LED is connected to.
 
 
 	org 0x00			; effective reset vector. Real reset vector is the last byte of code memory, which should contain a RETLW xx instruction where xx is an oscillator calibration value.
-	goto	start
+	;goto	start
 
 	; First 64 bytes and last byte (osc. calibration word) are readable regardless of CodeProtect bits, so
 	; put the revision there so we always have it, even if these bits get set.
@@ -55,7 +65,7 @@ BLUE	equ	1	; Change to GPIO pin the blue LED is connected to.
 	; and the file gets a red 'modified' mark...
 
 str_version:
-	DT "v1.2 tgipson"
+;	removed due to lack of space
 
 start:
 	; NOTE: These first few registers get reinitialized to defaults on ANY device Reset (including wakeup from SLEEP),
@@ -86,14 +96,15 @@ start:
 	goto	poke_reg_0_power_save; else - only remaining option is that WDT timed out while waiting for bus activity. Back to sleep...
 
 init:
-	clrwdt				; Can't do this earlier; it resets power-up state bits
+	;clrwdt				; Can't do this earlier; it resets power-up state bits
 
-	movlw	B'00001011'		; Brief initial "i'm not dead" pulse: show blue in common-anode; yellow in common-cathode (depends on LED pinout)
+	movlw	B'00001110'		; Brief initial "i'm not dead" pulse: show RED in common-anode; yellow in common-cathode (depends on LED pinout)
 	movwf	GPIO
 
 
 	clrf	GROUPADDR		; initial Group 0x00 (none / same as broadcast address)
-	clrf	DEF_VALID		; No deferred update buffers contain valid data
+	;clrf	DEF_VALID		; No deferred update buffers contain valid data
+
 
 	#if (COMM_ANODE == 0)	; ...
 	clrw					; Initially clear PWM intensities
@@ -102,14 +113,19 @@ init:
 	movlw	B'11111111'		; for common-anode, '1' (voltage) on the port extinguishes the LED.
 	#endif					; ...
 
-	movwf	PWM_R			;
-	movwf	PWM_G			;
-	movwf	PWM_B			;
-	movwf	DEF_R			; Just being unnecessary anal; these don't really need to be initialized
-	movwf	DEF_G			; as their respective DEF_VALID bit won't get set unless new data is written to them
-	movwf	DEF_B			; ...
 
-debug_hang:		; show long blue to indicate startup and/or sync lost. Change according to how long you want to hang of course...
+	movwf	PWM_R			;
+	movwf	PWM_R2			;
+	movwf	PWM_G			;
+	movwf	PWM_G2			;
+	movwf	PWM_B			;
+	movwf	PWM_B2			;
+
+	;movwf	DEF_R			; Just being unnecessary anal; these don't really need to be initialized
+	;movwf	DEF_G			; as their respective DEF_VALID bit won't get set unless new data is written to them
+	;movwf	DEF_B			; ...
+
+debug_hang:		; delay (showing "i'm not dead" set earlier) indicating startup and/or sync lost. Change according to how long you want to hang of course...
 	movlw	0x80
 	movwf	COUNT
 	clrf	SCRATCH0
@@ -144,7 +160,7 @@ main:						; Where it all happens; check for START condition and (if none) advan
 	clrwdt					; WDT time-out will reset the chip if this loop is not returned to in a timely manner (1-wire framing error, e.g. waiting for a serial bit that never comes)
 	btfsc	GPIO, SDI		; start bit?
 	goto	getcmd			; fake 'call' - shallow stack
-	call	pwm_r
+	call	pwm_r	; 11 inst.
 	btfsc	GPIO, SDI		; start bit?
 	goto	getcmd			; fake 'call' - shallow stack
 	call	pwm_g
@@ -152,6 +168,8 @@ main:						; Where it all happens; check for START condition and (if none) advan
 	goto	getcmd			; fake 'call' - shallow stack
 	call	pwm_b
 	goto	main
+
+; min. 17 instruction clocks for start condition
 
 
 ; +17 processcmd
@@ -196,7 +214,6 @@ getbit_secondhalf:
 	goto	getbit_firsthalf	; if no - wait for next
 								; else - fall through and begin 2nd byte of cmd...
 
-	;clrf	TMR0				; begin timing low half of bit
 	incf	FSR,f				; point to 2nd buffer byte
 
 getbyte2:
@@ -224,7 +241,7 @@ getbit_secondhalf2:
 	decfsz	COUNT,f				; got all bits?
 	goto	getbit_firsthalf2	; if no - wait for next
 
-	; 66 clocks from here to main (18+48)
+	; 89 clocks from here to main (via ExtCmd::activate_deferred) (checked v1.2)
 
 	; check address to see if it's anything we respond to...
 
@@ -259,7 +276,7 @@ processcmd:	; 48 incl. call/return
 							; else
 
 	btfsc	INDF, 6			; R cmd
-	call	processcmd_r	; 13
+	call	processcmd_r	; 7
 	btfsc	INDF, 5			; G cmd
 	call	processcmd_g
 	btfsc	INDF, 4			; B cmd
@@ -276,7 +293,7 @@ processcmd:	; 48 incl. call/return
 ; VAddr 02: Defer buf G
 ; VAddr 03: Defer buf B
 
-extcmd:
+extcmd:	; 66 clocks from here to main via activate_def cmd (v1.2)
 	btfsc	INDF, 6			; Decode against "Set Group"
 	goto	setgroup		; if Set Group bit set
 							; else...
@@ -354,18 +371,18 @@ identify_timer:	; count to a bunch...
 							;   into its START condition.
 
 
-
-poke_reg_0_activate_def:	; A longer command than most to accomplish; might want to delay following cmds a few ms...
+; 51 inst. incl. call/return
+poke_reg_0_activate_def:	; A longer command than most to accomplish; might want to delay following cmds...
 	movlw	DEF_R			; point INDF to *address* of DEF_R
 	movwf	FSR				; ...
 	btfsc	DEF_VALID, RED
-	call	processcmd_r
+	call	processcmd_r	; 13
 	incf	FSR, f			; pointing to DEF_G
 	btfsc	DEF_VALID, GREEN
-	call	processcmd_g
+	call	processcmd_g	; 13
 	incf	FSR, f			; pointing to DEF_B
 	btfsc	DEF_VALID, BLUE
-	call	processcmd_b
+	call	processcmd_b	; 13
 	clrf	DEF_VALID		; activated all; updates are no longer new
 	goto	main			; done! FIXME: Count the clocks on this...
 
@@ -379,27 +396,25 @@ poke_reg_1:					; Setting Red deferred update
 
 ; ---------------------------------------------------
 ; Process command byte in buffer for the given color
+; total 13 instruction clocks each
 
 processcmd_r:
 	call	setpwm				; 7
-	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
-	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
-	#endif
 	movwf	PWM_R
+	movf	PWM_SCRATCH, w
+	movwf	PWM_R2
 	retlw	0
 processcmd_g:
 	call	setpwm
-	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
-	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
-	#endif
 	movwf	PWM_G
+	movf	PWM_SCRATCH, W
+	movwf	PWM_G2
 	retlw	0
 processcmd_b:
 	call	setpwm
-	#if (COMM_ANODE == 1)		; Switched in for common-anode drive
-	xorlw	B'11111111'			; complement WREG directly (comm. anode: line LOW means LED is lit)
-	#endif
 	movwf	PWM_B
+	movf	PWM_SCRATCH, w
+	movwf	PWM_B2
 	retlw	0
 
 
@@ -408,27 +423,106 @@ processcmd_b:
 ;
 ; Want to return a value containing the number of '1's specified in the intensity
 ; value. But want to spread them out for faster switching and less perceivable flicker.
+; In v1.3, PWM is now a 16-bit sequence circulated through PWM_x and PWM_x2 regs (x = each r, g, b color)
+; and approximates a logorithmic scale to provide a visually linear spacing between intensities. The mapping is:
+;
+; Input intensity: # of 'lit' pulses out of 16
+; 1:1
+; 2:2
+; 3:3
+; 4:4
+; 5:6
+; 6:8
+; 7:11
+; 8:16
+
 setpwm:
 	movf	INDF, w		; cmd value
 	andlw	B'00001111'	; mask off bogus bits
+	movwf	SCRATCH0	; WREG not addressable, and can't clobber INDF yet
+	addwf	SCRATCH0, f
+	addwf	SCRATCH0, w	; hardware multiply by 3, heh
 	addwf	PCL, f		; skip that many instructions
+
+#if (COMM_ANODE == 0)
+	movlw	B'00000000'
+	movwf	PWM_SCRATCH
 	retlw	B'00000000' ; 0x00
-	retlw	B'00000001' ; 0x01
-	retlw	B'00010001' ; 0x02
-	retlw	B'01001001' ; 0x03
-	retlw	B'01010101' ; 0x04
-	retlw	B'01010111' ; 0x05
-	retlw	B'01110111' ; 0x06
-	retlw	B'01111111' ; 0x07
-	retlw	B'11111111' ; 0x08	; last valid value
-	retlw	B'11111111' ; 0x09	; Should not be sent any values this high; we can't represent them in the PWM registers anyway
-	retlw	B'11111111' ; 0x0A
-	retlw	B'11111111' ; 0x0B
-	retlw	B'11111111' ; 0x0C
-	retlw	B'11111111' ; 0x0D
-	retlw	B'11111111' ; 0x0E
-	retlw	B'11111111' ; 0x0F
-;	retlw	0x00		; pure paranoia
+	;nop
+	movlw	B'00000000'
+	movwf	PWM_SCRATCH
+	retlw	B'00010000' ; 0x01
+	;nop
+	movlw	B'00000001'
+	movwf	PWM_SCRATCH
+	retlw	B'00000001' ; 0x02
+	;nop
+	movlw	B'00001000'
+	movwf	PWM_SCRATCH
+	retlw	B'01000001' ; 0x03
+	;nop
+	movlw	B'00010001'
+	movwf	PWM_SCRATCH
+	retlw	B'00010001' ; 0x04
+	;nop
+	movlw	B'01001001'
+	movwf	PWM_SCRATCH
+	retlw	B'01001001' ; 0x05
+	;nop
+	movlw	B'01010101'
+	movwf	PWM_SCRATCH
+	retlw	B'01010101' ; 0x06
+	;nop
+	movlw	B'01101110'
+	movwf	PWM_SCRATCH
+	retlw	B'10111011' ; 0x07
+	;nop
+	movlw	B'11111111'
+	movwf	PWM_SCRATCH
+	retlw	B'11111111' ; 0x08
+
+#endif
+
+#if (COMM_ANODE == 1)
+	movlw	B'11111111'
+	movwf	PWM_SCRATCH
+	retlw	B'11111111' ; 0x00
+	;nop
+	movlw	B'11111111'
+	movwf	PWM_SCRATCH
+	retlw	B'11101111' ; 0x01
+	;nop
+	movlw	B'11111110'
+	movwf	PWM_SCRATCH
+	retlw	B'11111110' ; 0x02
+	;nop
+	movlw	B'11110111'
+	movwf	PWM_SCRATCH
+	retlw	B'10111110' ; 0x03
+	;nop
+	movlw	B'11101110'
+	movwf	PWM_SCRATCH
+	retlw	B'11101110' ; 0x04
+	;nop
+	movlw	B'10110110'
+	movwf	PWM_SCRATCH
+	retlw	B'10110110' ; 0x05
+	;nop
+	movlw	B'01010101'
+	movwf	PWM_SCRATCH
+	retlw	B'01010101' ; 0x06
+	;nop
+	movlw	B'10010001'
+	movwf	PWM_SCRATCH
+	retlw	B'01000100' ; 0x07
+	;nop
+	movlw	B'00000000'
+	movwf	PWM_SCRATCH
+	retlw	B'00000000' ; 0x08
+
+#endif
+
+
 
 ; ---------------------------------------------------
 ; Perform one iteration/rotation of "poor man's PWM" for each color's register
@@ -454,6 +548,7 @@ pwmjump:
 pwm:
 pwm_r:
 	rlf		PWM_R,f			; Rotate next PWM value into 'C'arry
+	rlf		PWM_R2, f
 	bcf		PWM_R, 0		; This is whatever random junk used to be in there, so clear it...
 	btfsc	STATUS, C		; catch the bit that just fell off the left
 	bsf		PWM_R, 0		; and stuff it back on the right.
@@ -464,6 +559,7 @@ pwm_r:
 	retlw	0
 pwm_g:
 	rlf		PWM_G,f
+	rlf		PWM_G2,f
 	bcf		PWM_G, 0
 	btfsc	STATUS, C
 	bsf		PWM_G, 0
@@ -474,6 +570,7 @@ pwm_g:
 	retlw	0
 pwm_b:
 	rlf		PWM_B,f
+	rlf		PWM_B2,f
 	bcf		PWM_B, 0
 	btfsc	STATUS, C
 	bsf		PWM_B, 0
@@ -503,6 +600,7 @@ pwmjump:
 pwm:
 pwm_r:
 	rlf		PWM_R,f			; Rotate next PWM value into 'C'arry
+	rlf		PWM_R2, f
 	bcf		PWM_R, 0		; This is whatever random junk used to be in there, so clear it...
 	btfsc	STATUS, C		; catch the bit that just fell off the left
 	bsf		PWM_R, 0		; and stuff it back on the right.
@@ -513,6 +611,7 @@ pwm_r:
 	retlw	0
 pwm_g:
 	rlf		PWM_G,f
+	rlf		PWM_G2, f
 	bcf		PWM_G, 0
 	btfsc	STATUS, C
 	bsf		PWM_G, 0
@@ -523,6 +622,7 @@ pwm_g:
 	retlw	0
 pwm_b:
 	rlf		PWM_B,f
+	rlf		PWM_B2, f
 	bcf		PWM_B, 0
 	btfsc	STATUS, C
 	bsf		PWM_B, 0
@@ -571,23 +671,18 @@ pwm_b:
 ; the new intensities are displayed. This will be particularly useful for trickling new values over the bus, then sending a single activate_deferred
 ; to all devices (addr 0) to give the appearance of a simultaneous update.
 
-; Vreg 00 is a virtual register among virtual registers: Rather than writing a value to it, you write to it setting an individual bit to
-; perform the requested action. Once the action is performed, the bit can be considered automatically cleared.
+; Vreg 00 consists of 1-bit flags you set to enter a particular state or perform the requested action. 
+; Once the action is performed, the bit can be considered automatically cleared. You should set only 1 per command.
 ;	* Unused (bit 3): Doesn't do anything.
 ; 	* Identify (bit 2): On receipt of this cmd by a given device address, this device shall pull the data line HIGH (internal weak pull-up)
 ;		for a period of about 512 device clocks (or whatever, plenty long enough for master device to see it). Normal operation is then resumed.
 ;		Note that this may disrupt other devices on the bus, who interpret the pullup signal as a new START command. If this is bothersome an
-;  		Identify command may be followed by a startless dummy command if a device responds.
+;  		Identify command may be followed by a dummy command if a device responds. To every other device on the bus, the response and START of the
+;       dummy command will just look like one long START. A write to Vreg 00 with no flags set is a good dummy command.
 ;	* Activate_deferred (bit 1): Replaces the currently displayed intensities with the contents of the Defer (R,G,B) regs if they contain a valid update.
 ;	* Power_save (bit 0): This command will effectively stop the CPU and any pulse modulation activities and enter a low-power SLEEP mode. The device will remain in 
 ;		SLEEP mode until the next bus activity occurs, at which point it will re-awaken. Technically it will be waking up occasionally due to WDT, but
 ;		these activity periods will be brief.
-
-; Ok, so the protocol as shown leaves only 1 bit unused.
-; Definitely painting ourselves into a corner, but might be able to squeak out a little more functionality by making that topmost flags bit
-; a 'Use Indirection' flag that changes one of the existing VADDRs to a pointer to a numbered register, or even to a full register bank.
-; This then gives 16 possible registers for each VADDR, but packing any further functionalities onto PIC10F200 would be challenging at best.
-; Therefore, I think the above protocol definition is OK as-is, and any bigger chip will use a more robust 2-wire (clk,data) serial and its own protocol.
 
 
 #include "vars.inc"		; Memory map

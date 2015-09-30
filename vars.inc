@@ -1,4 +1,4 @@
-; $Id: vars.inc,v 1.2 2008/02/18 20:26:26 tgipson Exp $
+; $Id: vars.inc,v 1.1 2009/12/14 06:10:34 tgipson Exp $
 ; Memory register definitions for Blinkenlichten
 
 
@@ -8,8 +8,12 @@
 	COUNT		; bits-in-byte countdown
 
 	PWM_R		; poor-man's PWM registers: '1' bits will be rotated around in them
+	PWM_R2
 	PWM_G		;
+	PWM_G2
 	PWM_B		;
+	PWM_B2
+	PWM_SCRATCH
 
 	GROUPADDR	; Storage byte for Group Address
 
